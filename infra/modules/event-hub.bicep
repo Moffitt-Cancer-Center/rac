@@ -58,10 +58,15 @@ resource listenerAuthRule 'Microsoft.EventHub/namespaces/authorizationRules@2024
   }
 }
 
+// Reference to the Log Analytics workspace
+resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
+  name: last(split(logAnalyticsWorkspaceId, '/'))
+}
+
 // Data Export: Forward access logs to event hub
-// Using dataExports sub-resource on LA workspace for custom table export
 resource accessLogsDataExport 'Microsoft.OperationalInsights/workspaces/dataExports@2020-08-01' = {
-  name: '${last(split(logAnalyticsWorkspaceId, '/'))}/dataexport-accesslogs-${racEnv}'
+  parent: workspace
+  name: 'dataexport-accesslogs-${racEnv}'
   properties: {
     destination: {
       resourceId: eventHubNamespace.id
@@ -78,7 +83,8 @@ resource accessLogsDataExport 'Microsoft.OperationalInsights/workspaces/dataExpo
 
 // Data Export: Forward approval events to event hub
 resource approvalEventsDataExport 'Microsoft.OperationalInsights/workspaces/dataExports@2020-08-01' = {
-  name: '${last(split(logAnalyticsWorkspaceId, '/'))}/dataexport-approval-${racEnv}'
+  parent: workspace
+  name: 'dataexport-approval-${racEnv}'
   properties: {
     destination: {
       resourceId: eventHubNamespace.id

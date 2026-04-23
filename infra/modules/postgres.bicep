@@ -1,9 +1,6 @@
 @description('Azure region for all resources')
 param location string
 
-@description('RAC deployment environment (dev, staging, prod)')
-param racEnv string
-
 @description('Postgres Flexible Server name')
 param serverName string
 
@@ -27,7 +24,17 @@ param haMode string
 param backupRetentionDays int
 
 @description('Postgres private endpoint subnet resource ID')
-param pgSubnetId string
+param peSubnetId string
+
+@description('VNet resource ID for private DNS zone linking')
+param vnetId string
+
+@description('Postgres extensions to enable')
+param extensions array = ['pg_uuidv7']
+
+@description('Geo-redundant backup setting (Enabled or Disabled)')
+@allowed(['Enabled', 'Disabled'])
+param geoRedundantBackup string = 'Disabled'
 
 @description('Resource tags applied to all resources')
 param tags object
@@ -49,24 +56,80 @@ resource postgresServer 'Microsoft.DBforPostgreSQL/flexibleServers@2023-06-01-pr
     }
     backup: {
       backupRetentionDays: backupRetentionDays
-      geoRedundantBackup: 'Enabled'
+      geoRedundantBackup: geoRedundantBackup
     }
     highAvailability: {
       mode: haMode
     }
-    network: {
-      delegatedSubnetResourceId: pgSubnetId
-    }
   }
 }
 
-// Configuration: enable pg_uuidv7 extension in azure.extensions
+// Configuration: enable extensions in azure.extensions
 resource postgresConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2023-06-01-preview' = {
   parent: postgresServer
   name: 'azure.extensions'
   properties: {
-    value: 'pg_uuidv7'
+    value: join(extensions, ',')
     source: 'user-override'
+  }
+}
+
+// Private DNS zone for postgres
+resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: 'privatelink.postgres.database.azure.com'
+  location: 'global'
+  tags: tags
+}
+
+// VNet link for private DNS zone
+resource privateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  parent: privateDnsZone
+  name: 'link-postgres-${location}'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: vnetId
+    }
+  }
+}
+
+// Private Endpoint for Postgres
+resource privateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = {
+  name: 'pe-postgres-${location}'
+  location: location
+  tags: tags
+  properties: {
+    subnet: {
+      id: peSubnetId
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'postgres-connection'
+        properties: {
+          privateLinkServiceId: postgresServer.id
+          groupIds: [
+            'postgresqlServer'
+          ]
+        }
+      }
+    ]
+  }
+}
+
+// Private DNS Zone Group for Private Endpoint
+resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
+  parent: privateEndpoint
+  name: 'postgres-zone-group'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'postgres-config'
+        properties: {
+          privateDnsZoneId: privateDnsZone.id
+        }
+      }
+    ]
   }
 }
 

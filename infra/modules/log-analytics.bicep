@@ -1,9 +1,6 @@
 @description('Azure region for all resources')
 param location string
 
-@description('RAC deployment environment (dev, staging, prod)')
-param racEnv string
-
 @description('Name for the Log Analytics workspace')
 param workspaceName string
 

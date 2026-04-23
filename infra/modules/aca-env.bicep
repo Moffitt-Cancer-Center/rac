@@ -1,9 +1,6 @@
 @description('Azure region for all resources')
 param location string
 
-@description('RAC deployment environment (dev, staging, prod)')
-param racEnv string
-
 @description('ACA managed environment name')
 param envName string
 
@@ -25,6 +22,8 @@ param profileSku string
 @description('Resource tags applied to all resources')
 param tags object
 
+var laApiVersion = '2023-09-01'
+
 resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: envName
   location: location
@@ -34,7 +33,7 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
         customerId: workspaceCustomerId
-        sharedKey: listKeys(workspaceId, '2023-09-01').primarySharedKey
+        sharedKey: listKeys(workspaceId, laApiVersion).primarySharedKey
       }
     }
     vnetConfiguration: {
@@ -42,7 +41,12 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
       internal: true
     }
     zoneRedundant: zoneRedundant
-    workloadProfiles: [
+    workloadProfiles: profileSku == 'Consumption' ? [
+      {
+        name: 'Consumption'
+        workloadProfileType: 'Consumption'
+      }
+    ] : [
       {
         name: 'Consumption'
         workloadProfileType: 'Consumption'
@@ -50,6 +54,8 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
       {
         name: 'apps'
         workloadProfileType: profileSku
+        minimumCount: 1
+        maximumCount: 3
       }
     ]
   }

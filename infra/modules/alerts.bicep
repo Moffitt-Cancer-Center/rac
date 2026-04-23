@@ -49,7 +49,6 @@ resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
     webhookReceivers: !empty(actionGroupWebhookUri) ? [
       {
         name: 'webhook-receiver'
-        objectId: null
         serviceUri: actionGroupWebhookUri
         useCommonAlertSchema: true
       }
@@ -57,109 +56,87 @@ resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
   }
 }
 
-// Alert: Shim 5xx rate > 1% over 5 minutes
-resource alertShim5xx 'Microsoft.Insights/metricAlerts@2018-03-01' = if (!empty(shimAppId)) {
+// Alert: Shim 5xx error rate > 1% (via scheduled query rule on Log Analytics)
+resource alertShim5xx 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (!empty(shimAppId)) {
   name: 'alert-shim-5xx-${racEnv}'
-  location: 'global'
+  location: location
   tags: tags
   properties: {
     description: 'Shim application 5xx error rate > 1% over 5 minutes'
     enabled: true
-    severity: 1
+    severity: 2
     scopes: [
-      shimAppId
+      logAnalyticsWorkspaceId
     ]
     evaluationFrequency: 'PT1M'
     windowSize: 'PT5M'
     criteria: {
-      'odata.type': 'Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria'
       allOf: [
         {
-          name: '5xx-rate'
-          metricName: 'Requests'
-          metricNamespace: 'Microsoft.App/containerApps'
+          query: '''
+          ContainerAppConsoleLogs_CL
+          | where ContainerAppName_s == "shim"
+          | summarize total = count(), fivexx = countif(StatusCode_d >= 500) by bin(TimeGenerated, 1m)
+          | extend rate = fivexx * 100.0 / total
+          | where rate > 1.0 and total > 20
+          '''
+          timeAggregation: 'Count'
           operator: 'GreaterThan'
-          threshold: 1
-          timeAggregation: 'Total'
-          dimensions: [
-            {
-              name: 'statusCodeCategory'
-              operator: 'Include'
-              values: [
-                '5xx'
-              ]
-            }
-          ]
-        }
-        {
-          name: 'total-requests'
-          metricName: 'Requests'
-          metricNamespace: 'Microsoft.App/containerApps'
-          operator: 'GreaterThan'
-          threshold: 100
-          timeAggregation: 'Total'
+          threshold: 0
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
         }
       ]
     }
-    actions: [
-      {
-        actionGroupId: actionGroup.id
-        webHookProperties: {}
-      }
-    ]
+    actions: {
+      actionGroups: [
+        actionGroup.id
+      ]
+    }
   }
 }
 
-// Alert: Control Plane 5xx rate > 1% over 5 minutes
-resource alertControlPlane5xx 'Microsoft.Insights/metricAlerts@2018-03-01' = if (!empty(controlPlaneAppId)) {
+// Alert: Control Plane 5xx error rate > 1% (via scheduled query rule on Log Analytics)
+resource alertControlPlane5xx 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (!empty(controlPlaneAppId)) {
   name: 'alert-controlplane-5xx-${racEnv}'
-  location: 'global'
+  location: location
   tags: tags
   properties: {
     description: 'Control Plane application 5xx error rate > 1% over 5 minutes'
     enabled: true
-    severity: 1
+    severity: 2
     scopes: [
-      controlPlaneAppId
+      logAnalyticsWorkspaceId
     ]
     evaluationFrequency: 'PT1M'
     windowSize: 'PT5M'
     criteria: {
-      'odata.type': 'Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria'
       allOf: [
         {
-          name: '5xx-rate'
-          metricName: 'Requests'
-          metricNamespace: 'Microsoft.App/containerApps'
+          query: '''
+          ContainerAppConsoleLogs_CL
+          | where ContainerAppName_s == "controlplane"
+          | summarize total = count(), fivexx = countif(StatusCode_d >= 500) by bin(TimeGenerated, 1m)
+          | extend rate = fivexx * 100.0 / total
+          | where rate > 1.0 and total > 20
+          '''
+          timeAggregation: 'Count'
           operator: 'GreaterThan'
-          threshold: 1
-          timeAggregation: 'Total'
-          dimensions: [
-            {
-              name: 'statusCodeCategory'
-              operator: 'Include'
-              values: [
-                '5xx'
-              ]
-            }
-          ]
-        }
-        {
-          name: 'total-requests'
-          metricName: 'Requests'
-          metricNamespace: 'Microsoft.App/containerApps'
-          operator: 'GreaterThan'
-          threshold: 100
-          timeAggregation: 'Total'
+          threshold: 0
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
         }
       ]
     }
-    actions: [
-      {
-        actionGroupId: actionGroup.id
-        webHookProperties: {}
-      }
-    ]
+    actions: {
+      actionGroups: [
+        actionGroup.id
+      ]
+    }
   }
 }
 
@@ -182,6 +159,7 @@ resource alertPostgresConnectionFailures 'Microsoft.Insights/metricAlerts@2018-0
       allOf: [
         {
           name: 'connection-failures'
+          criterionType: 'StaticThresholdCriterion'
           metricName: 'connections_failed'
           metricNamespace: 'Microsoft.DBforPostgreSQL/flexibleServers'
           operator: 'GreaterThan'
@@ -218,6 +196,7 @@ resource alertKeyVaultAccessDenied 'Microsoft.Insights/metricAlerts@2018-03-01' 
       allOf: [
         {
           name: 'access-denied'
+          criterionType: 'StaticThresholdCriterion'
           metricName: 'ServiceApiResult'
           metricNamespace: 'Microsoft.KeyVault/vaults'
           operator: 'GreaterThan'
@@ -263,8 +242,6 @@ resource alertPipelineStuck 'Microsoft.Insights/scheduledQueryRules@2023-03-15-p
       allOf: [
         {
           query: '''
-          // Placeholder query: identifies pipeline submissions without terminal verdict
-          // Phase 3 will provide actual structured log query
           RAC_PipelineLog_CL
           | where event_type == "pipeline_started"
           | where not (event_type == "pipeline_verdict")
@@ -280,11 +257,11 @@ resource alertPipelineStuck 'Microsoft.Insights/scheduledQueryRules@2023-03-15-p
         }
       ]
     }
-    actions: [
-      {
-        actionGroupId: actionGroup.id
-      }
-    ]
+    actions: {
+      actionGroups: [
+        actionGroup.id
+      ]
+    }
   }
 }
 

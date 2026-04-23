@@ -10,6 +10,9 @@ param appGatewayPublicFqdn string
 @description('App Gateway Private Link resource ID (empty if using public FQDN origin)')
 param appGatewayPrivateLinkResourceId string = ''
 
+@description('Azure region for shared private link location (empty to skip private link)')
+param privateLinkLocation string = ''
+
 @description('Resource tags')
 param tags object
 
@@ -60,12 +63,12 @@ resource origin 'Microsoft.Cdn/profiles/originGroups/origins@2023-05-01' = {
     priority: 1
     weight: 1000
     enabledState: 'Enabled'
-    sharedPrivateLinkResource: !empty(appGatewayPrivateLinkResourceId) ? {
+    sharedPrivateLinkResource: !empty(appGatewayPrivateLinkResourceId) && !empty(privateLinkLocation) ? {
       privateLink: {
         id: appGatewayPrivateLinkResourceId
       }
       groupId: 'appgw'
-      privateLinkLocation: 'eastus'
+      privateLinkLocation: privateLinkLocation
     } : null
   }
 }

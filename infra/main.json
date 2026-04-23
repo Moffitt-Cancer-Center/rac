@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "7581999485523594462"
+      "templateHash": "16135037953299579571"
     }
   },
   "functions": [
@@ -102,13 +102,6 @@
       "defaultValue": "",
       "metadata": {
         "description": "Control Plane managed identity principal ID (empty on first deploy; populated in Phase 5 Task 1 re-deploy)"
-      }
-    },
-    "shimMiPrincipalId": {
-      "type": "string",
-      "defaultValue": "",
-      "metadata": {
-        "description": "Shim managed identity principal ID (empty on first deploy; populated in Phase 6)"
       }
     },
     "vnetOctet": {
@@ -416,9 +409,6 @@
           "location": {
             "value": "[parameters('location')]"
           },
-          "racEnv": {
-            "value": "[parameters('racEnv')]"
-          },
           "workspaceName": {
             "value": "[variables('workspaceName')]"
           },
@@ -439,7 +429,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "16404633145920545895"
+              "templateHash": "7647735305542911878"
             }
           },
           "parameters": {
@@ -447,12 +437,6 @@
               "type": "string",
               "metadata": {
                 "description": "Azure region for all resources"
-              }
-            },
-            "racEnv": {
-              "type": "string",
-              "metadata": {
-                "description": "RAC deployment environment (dev, staging, prod)"
               }
             },
             "workspaceName": {
@@ -566,9 +550,6 @@
           "location": {
             "value": "[parameters('location')]"
           },
-          "racEnv": {
-            "value": "[parameters('racEnv')]"
-          },
           "kvName": {
             "value": "[variables('kvName')]"
           },
@@ -577,6 +558,9 @@
           },
           "peSubnetId": {
             "value": "[reference('network').outputs.peSubnetId.value]"
+          },
+          "vnetId": {
+            "value": "[reference('network').outputs.vnetId.value]"
           },
           "enablePurgeProtection": {
             "value": "[parameters('kvEnablePurgeProtection')]"
@@ -595,7 +579,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "12128461614108661552"
+              "templateHash": "16761626027934180901"
             }
           },
           "parameters": {
@@ -603,12 +587,6 @@
               "type": "string",
               "metadata": {
                 "description": "Azure region for all resources"
-              }
-            },
-            "racEnv": {
-              "type": "string",
-              "metadata": {
-                "description": "RAC deployment environment (dev, staging, prod)"
               }
             },
             "kvName": {
@@ -627,6 +605,12 @@
               "type": "string",
               "metadata": {
                 "description": "Private Endpoint subnet resource ID"
+              }
+            },
+            "vnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet resource ID for private DNS zone linking"
               }
             },
             "tags": {
@@ -678,6 +662,28 @@
               }
             },
             {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "privatelink.vaultcore.azure.net",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', 'privatelink.vaultcore.azure.net', format('link-kv-{0}', parameters('location')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[parameters('vnetId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.vaultcore.azure.net')]"
+              ]
+            },
+            {
               "type": "Microsoft.Network/privateEndpoints",
               "apiVersion": "2023-11-01",
               "name": "[format('pe-{0}', parameters('kvName'))]",
@@ -702,6 +708,25 @@
               "dependsOn": [
                 "[resourceId('Microsoft.KeyVault/vaults', parameters('kvName'))]"
               ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2023-11-01",
+              "name": "[format('{0}/{1}', format('pe-{0}', parameters('kvName')), 'kv-zone-group')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "kv-config",
+                    "properties": {
+                      "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.vaultcore.azure.net')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}', parameters('kvName')))]",
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.vaultcore.azure.net')]"
+              ]
             }
           ],
           "outputs": {
@@ -719,7 +744,7 @@
               },
               "value": "[reference(resourceId('Microsoft.KeyVault/vaults', parameters('kvName')), '2023-07-01').vaultUri]"
             },
-            "kvName": {
+            "keyVaultName": {
               "type": "string",
               "metadata": {
                 "description": "Key Vault name"
@@ -748,14 +773,14 @@
           "location": {
             "value": "[parameters('location')]"
           },
-          "racEnv": {
-            "value": "[parameters('racEnv')]"
-          },
           "storageAccountName": {
             "value": "[parameters('storageAccountName')]"
           },
           "peSubnetId": {
             "value": "[reference('network').outputs.peSubnetId.value]"
+          },
+          "vnetId": {
+            "value": "[reference('network').outputs.vnetId.value]"
           },
           "sku": "[if(equals(parameters('racEnv'), 'dev'), createObject('value', 'Standard_LRS'), createObject('value', 'Standard_GRS'))]",
           "tags": {
@@ -769,7 +794,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "4394451603878801572"
+              "templateHash": "12815648683615509441"
             }
           },
           "parameters": {
@@ -777,12 +802,6 @@
               "type": "string",
               "metadata": {
                 "description": "Azure region for all resources"
-              }
-            },
-            "racEnv": {
-              "type": "string",
-              "metadata": {
-                "description": "RAC deployment environment (dev, staging, prod)"
               }
             },
             "storageAccountName": {
@@ -795,6 +814,12 @@
               "type": "string",
               "metadata": {
                 "description": "Private Endpoint subnet resource ID"
+              }
+            },
+            "vnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet resource ID for private DNS zone linking"
               }
             },
             "sku": {
@@ -837,6 +862,16 @@
               "type": "Microsoft.Storage/storageAccounts/blobServices",
               "apiVersion": "2023-05-01",
               "name": "[format('{0}/{1}', parameters('storageAccountName'), 'default')]",
+              "properties": {
+                "deleteRetentionPolicy": {
+                  "enabled": true,
+                  "days": 7
+                },
+                "containerDeleteRetentionPolicy": {
+                  "enabled": true,
+                  "days": 7
+                }
+              },
               "dependsOn": [
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
               ]
@@ -993,6 +1028,28 @@
               ]
             },
             {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "privatelink.blob.core.windows.net",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', 'privatelink.blob.core.windows.net', format('link-blob-{0}', parameters('location')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[parameters('vnetId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.blob.core.windows.net')]"
+              ]
+            },
+            {
               "type": "Microsoft.Network/privateEndpoints",
               "apiVersion": "2023-11-01",
               "name": "[format('pe-{0}-blob', parameters('storageAccountName'))]",
@@ -1016,6 +1073,25 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2023-11-01",
+              "name": "[format('{0}/{1}', format('pe-{0}-blob', parameters('storageAccountName')), 'blob-zone-group')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "blob-config",
+                    "properties": {
+                      "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.blob.core.windows.net')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-blob', parameters('storageAccountName')))]",
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.blob.core.windows.net')]"
               ]
             }
           ],
@@ -1063,9 +1139,6 @@
           "location": {
             "value": "[parameters('location')]"
           },
-          "racEnv": {
-            "value": "[parameters('racEnv')]"
-          },
           "serverName": {
             "value": "[parameters('pgServerName')]"
           },
@@ -1087,9 +1160,18 @@
           "backupRetentionDays": {
             "value": "[parameters('pgBackupRetentionDays')]"
           },
-          "pgSubnetId": {
-            "value": "[reference('network').outputs.pgSubnetId.value]"
+          "peSubnetId": {
+            "value": "[reference('network').outputs.peSubnetId.value]"
           },
+          "vnetId": {
+            "value": "[reference('network').outputs.vnetId.value]"
+          },
+          "extensions": {
+            "value": [
+              "pg_uuidv7"
+            ]
+          },
+          "geoRedundantBackup": "[if(equals(parameters('racEnv'), 'dev'), createObject('value', 'Disabled'), createObject('value', 'Enabled'))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -1101,7 +1183,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "4594676212111844399"
+              "templateHash": "4168752061394912027"
             }
           },
           "parameters": {
@@ -1109,12 +1191,6 @@
               "type": "string",
               "metadata": {
                 "description": "Azure region for all resources"
-              }
-            },
-            "racEnv": {
-              "type": "string",
-              "metadata": {
-                "description": "RAC deployment environment (dev, staging, prod)"
               }
             },
             "serverName": {
@@ -1159,10 +1235,36 @@
                 "description": "Backup retention days"
               }
             },
-            "pgSubnetId": {
+            "peSubnetId": {
               "type": "string",
               "metadata": {
                 "description": "Postgres private endpoint subnet resource ID"
+              }
+            },
+            "vnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet resource ID for private DNS zone linking"
+              }
+            },
+            "extensions": {
+              "type": "array",
+              "defaultValue": [
+                "pg_uuidv7"
+              ],
+              "metadata": {
+                "description": "Postgres extensions to enable"
+              }
+            },
+            "geoRedundantBackup": {
+              "type": "string",
+              "defaultValue": "Disabled",
+              "allowedValues": [
+                "Enabled",
+                "Disabled"
+              ],
+              "metadata": {
+                "description": "Geo-redundant backup setting (Enabled or Disabled)"
               }
             },
             "tags": {
@@ -1192,13 +1294,10 @@
                 },
                 "backup": {
                   "backupRetentionDays": "[parameters('backupRetentionDays')]",
-                  "geoRedundantBackup": "Enabled"
+                  "geoRedundantBackup": "[parameters('geoRedundantBackup')]"
                 },
                 "highAvailability": {
                   "mode": "[parameters('haMode')]"
-                },
-                "network": {
-                  "delegatedSubnetResourceId": "[parameters('pgSubnetId')]"
                 }
               }
             },
@@ -1207,11 +1306,78 @@
               "apiVersion": "2023-06-01-preview",
               "name": "[format('{0}/{1}', parameters('serverName'), 'azure.extensions')]",
               "properties": {
-                "value": "pg_uuidv7",
+                "value": "[join(parameters('extensions'), ',')]",
                 "source": "user-override"
               },
               "dependsOn": [
                 "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "privatelink.postgres.database.azure.com",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', 'privatelink.postgres.database.azure.com', format('link-postgres-{0}', parameters('location')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[parameters('vnetId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.postgres.database.azure.com')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2024-05-01",
+              "name": "[format('pe-postgres-{0}', parameters('location'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('peSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "postgres-connection",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]",
+                      "groupIds": [
+                        "postgresqlServer"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', format('pe-postgres-{0}', parameters('location')), 'postgres-zone-group')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "postgres-config",
+                    "properties": {
+                      "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.postgres.database.azure.com')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.postgres.database.azure.com')]",
+                "[resourceId('Microsoft.Network/privateEndpoints', format('pe-postgres-{0}', parameters('location')))]"
               ]
             }
           ],
@@ -1430,9 +1596,6 @@
           "location": {
             "value": "[parameters('location')]"
           },
-          "racEnv": {
-            "value": "[parameters('racEnv')]"
-          },
           "envName": {
             "value": "[format('aca-rac-{0}', parameters('racEnv'))]"
           },
@@ -1462,7 +1625,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "6967461495362003969"
+              "templateHash": "17792868116885973534"
             }
           },
           "parameters": {
@@ -1470,12 +1633,6 @@
               "type": "string",
               "metadata": {
                 "description": "Azure region for all resources"
-              }
-            },
-            "racEnv": {
-              "type": "string",
-              "metadata": {
-                "description": "RAC deployment environment (dev, staging, prod)"
               }
             },
             "envName": {
@@ -1521,6 +1678,9 @@
               }
             }
           },
+          "variables": {
+            "laApiVersion": "2023-09-01"
+          },
           "resources": [
             {
               "type": "Microsoft.App/managedEnvironments",
@@ -1533,7 +1693,7 @@
                   "destination": "log-analytics",
                   "logAnalyticsConfiguration": {
                     "customerId": "[parameters('workspaceCustomerId')]",
-                    "sharedKey": "[listKeys(parameters('workspaceId'), '2023-09-01').primarySharedKey]"
+                    "sharedKey": "[listKeys(parameters('workspaceId'), variables('laApiVersion')).primarySharedKey]"
                   }
                 },
                 "vnetConfiguration": {
@@ -1541,16 +1701,7 @@
                   "internal": true
                 },
                 "zoneRedundant": "[parameters('zoneRedundant')]",
-                "workloadProfiles": [
-                  {
-                    "name": "Consumption",
-                    "workloadProfileType": "Consumption"
-                  },
-                  {
-                    "name": "apps",
-                    "workloadProfileType": "[parameters('profileSku')]"
-                  }
-                ]
+                "workloadProfiles": "[if(equals(parameters('profileSku'), 'Consumption'), createArray(createObject('name', 'Consumption', 'workloadProfileType', 'Consumption')), createArray(createObject('name', 'Consumption', 'workloadProfileType', 'Consumption'), createObject('name', 'apps', 'workloadProfileType', parameters('profileSku'), 'minimumCount', 1, 'maximumCount', 3)))]"
               }
             }
           ],
@@ -1712,6 +1863,9 @@
           "tlsCertKvSecretId": {
             "value": "[parameters('appGwTlsCertKvSecretId')]"
           },
+          "appGwMiResourceId": {
+            "value": "[reference('managedIdentity').outputs.appGwMiResourceId.value]"
+          },
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -1723,7 +1877,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "12350808717761113628"
+              "templateHash": "3589262447220084858"
             }
           },
           "parameters": {
@@ -1758,9 +1912,15 @@
               }
             },
             "tlsCertKvSecretId": {
-              "type": "securestring",
+              "type": "string",
               "metadata": {
                 "description": "TLS certificate Key Vault secret ID (full versioned secret URI)"
+              }
+            },
+            "appGwMiResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "App Gateway managed identity resource ID"
               }
             },
             "tags": {
@@ -1792,7 +1952,10 @@
               "properties": {
                 "publicIPAllocationMethod": "Static",
                 "publicIPAddressVersion": "IPv4",
-                "idleTimeoutInMinutes": 4
+                "idleTimeoutInMinutes": 4,
+                "dnsSettings": {
+                  "domainNameLabel": "[format('appgw-rac-{0}-{1}', parameters('racEnv'), uniqueString(resourceGroup().id))]"
+                }
               }
             },
             {
@@ -1825,6 +1988,12 @@
               "name": "[parameters('appGwName')]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('appGwMiResourceId'))]": {}
+                }
+              },
               "properties": {
                 "sku": {
                   "name": "WAF_v2",
@@ -1911,6 +2080,7 @@
                     "name": "appGatewayRoutingRule",
                     "properties": {
                       "ruleType": "Basic",
+                      "priority": 100,
                       "httpListener": {
                         "id": "[format('{0}/httpListeners/appGatewayHttpsListener', variables('appGwId'))]"
                       },
@@ -1918,7 +2088,7 @@
                         "id": "[format('{0}/backendAddressPools/appGatewayBackendPool', variables('appGwId'))]"
                       },
                       "backendHttpSettings": {
-                        "id": "[format('{0}/backendHttpSettings/appGatewayBackendHttpSettings', variables('appGwId'))]"
+                        "id": "[format('{0}/backendHttpSettingsCollection/appGatewayBackendHttpSettings', variables('appGwId'))]"
                       }
                     }
                   }
@@ -1954,7 +2124,7 @@
               "metadata": {
                 "description": "Application Gateway public IP FQDN"
               },
-              "value": "[if(and(not(equals(reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings, null())), not(equals(reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings.fqdn, null()))), reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings.fqdn, reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').ipAddress)]"
+              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings.fqdn]"
             },
             "appGatewayPublicIp": {
               "type": "string",
@@ -1967,6 +2137,7 @@
         }
       },
       "dependsOn": [
+        "managedIdentity",
         "network",
         "rg"
       ]
@@ -2005,7 +2176,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "3774393792902435877"
+              "templateHash": "12271495176127261153"
             }
           },
           "parameters": {
@@ -2032,6 +2203,13 @@
               "defaultValue": "",
               "metadata": {
                 "description": "App Gateway Private Link resource ID (empty if using public FQDN origin)"
+              }
+            },
+            "privateLinkLocation": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Azure region for shared private link location (empty to skip private link)"
               }
             },
             "tags": {
@@ -2093,7 +2271,7 @@
                 "priority": 1,
                 "weight": 1000,
                 "enabledState": "Enabled",
-                "sharedPrivateLinkResource": "[if(not(empty(parameters('appGatewayPrivateLinkResourceId'))), createObject('privateLink', createObject('id', parameters('appGatewayPrivateLinkResourceId')), 'groupId', 'appgw', 'privateLinkLocation', 'eastus'), null())]"
+                "sharedPrivateLinkResource": "[if(and(not(empty(parameters('appGatewayPrivateLinkResourceId'))), not(empty(parameters('privateLinkLocation')))), createObject('privateLink', createObject('id', parameters('appGatewayPrivateLinkResourceId')), 'groupId', 'appgw', 'privateLinkLocation', parameters('privateLinkLocation')), null())]"
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Cdn/profiles/originGroups', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')))]"
@@ -2254,7 +2432,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "8507450378847529908"
+              "templateHash": "15478519368856080943"
             }
           },
           "parameters": {
@@ -2289,6 +2467,13 @@
               "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
               "apiVersion": "2023-07-31-preview",
               "name": "[format('id-rac-shim-{0}', parameters('racEnv'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-07-31-preview",
+              "name": "[format('id-rac-appgw-{0}', parameters('racEnv'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]"
             }
@@ -2335,12 +2520,276 @@
                 "description": "Shim managed identity client ID"
               },
               "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-shim-{0}', parameters('racEnv'))), '2023-07-31-preview').clientId]"
+            },
+            "appGwMiResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "App Gateway managed identity resource ID"
+              },
+              "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-appgw-{0}', parameters('racEnv')))]"
+            },
+            "appGwMiPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "App Gateway managed identity principal ID"
+              },
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-appgw-{0}', parameters('racEnv'))), '2023-07-31-preview').principalId]"
+            },
+            "appGwMiClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "App Gateway managed identity client ID"
+              },
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-appgw-{0}', parameters('racEnv'))), '2023-07-31-preview').clientId]"
             }
           }
         }
       },
       "dependsOn": [
         "rg"
+      ]
+    },
+    "roleAssignmentsKv": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-roleassignments-kv",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "controlPlaneMiPrincipalId": {
+            "value": "[reference('managedIdentity').outputs.controlPlaneMiPrincipalId.value]"
+          },
+          "shimMiPrincipalId": {
+            "value": "[reference('managedIdentity').outputs.shimMiPrincipalId.value]"
+          },
+          "kvResourceId": {
+            "value": "[reference('keyVault').outputs.kvId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "1101044586595305005"
+            }
+          },
+          "parameters": {
+            "controlPlaneMiPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Control Plane managed identity principal ID (empty on first deploy; populated in Phase 5 Task 1 re-deploy)"
+              }
+            },
+            "shimMiPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Shim managed identity principal ID (empty on first deploy; populated in Phase 6)"
+              }
+            },
+            "kvResourceId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Key Vault resource ID (platform Key Vault, for KV assignments only)"
+              }
+            }
+          },
+          "resources": [
+            {
+              "condition": "[and(not(empty(parameters('controlPlaneMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('controlPlaneMiPrincipalId'), '14b46e9e-c2b7-41b4-b07b-48a6ebf60603')]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '14b46e9e-c2b7-41b4-b07b-48a6ebf60603')]",
+                "principalId": "[parameters('controlPlaneMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            {
+              "condition": "[and(not(empty(parameters('shimMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('shimMiPrincipalId'), '12338af0-0e69-4776-bea7-57ae8d297424')]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bea7-57ae8d297424')]",
+                "principalId": "[parameters('shimMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            {
+              "condition": "[not(empty(parameters('controlPlaneMiPrincipalId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, parameters('controlPlaneMiPrincipalId'), 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+                "principalId": "[parameters('controlPlaneMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ],
+          "outputs": {
+            "kvCryptoOfficerRoleAssignmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault Crypto Officer role assignment resource ID (if created)"
+              },
+              "value": "[if(and(not(empty(parameters('controlPlaneMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('controlPlaneMiPrincipalId'), '14b46e9e-c2b7-41b4-b07b-48a6ebf60603')), '')]"
+            },
+            "kvCryptoUserRoleAssignmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault Crypto User role assignment resource ID (if created)"
+              },
+              "value": "[if(and(not(empty(parameters('shimMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('shimMiPrincipalId'), '12338af0-0e69-4776-bea7-57ae8d297424')), '')]"
+            },
+            "tier3ContributorRoleAssignmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "Tier 3 Contributor role assignment resource ID (if created)"
+              },
+              "value": "[if(not(empty(parameters('controlPlaneMiPrincipalId'))), resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, parameters('controlPlaneMiPrincipalId'), 'b24988ac-6180-42a0-ab88-20f7382dd24c')), '')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "keyVault",
+        "managedIdentity",
+        "rg"
+      ]
+    },
+    "roleAssignmentsTier3": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-roleassignments-tier3",
+      "resourceGroup": "[format('rg-rac-tier3-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "controlPlaneMiPrincipalId": {
+            "value": "[reference('managedIdentity').outputs.controlPlaneMiPrincipalId.value]"
+          },
+          "shimMiPrincipalId": {
+            "value": ""
+          },
+          "kvResourceId": {
+            "value": ""
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "1101044586595305005"
+            }
+          },
+          "parameters": {
+            "controlPlaneMiPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Control Plane managed identity principal ID (empty on first deploy; populated in Phase 5 Task 1 re-deploy)"
+              }
+            },
+            "shimMiPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Shim managed identity principal ID (empty on first deploy; populated in Phase 6)"
+              }
+            },
+            "kvResourceId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Key Vault resource ID (platform Key Vault, for KV assignments only)"
+              }
+            }
+          },
+          "resources": [
+            {
+              "condition": "[and(not(empty(parameters('controlPlaneMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('controlPlaneMiPrincipalId'), '14b46e9e-c2b7-41b4-b07b-48a6ebf60603')]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '14b46e9e-c2b7-41b4-b07b-48a6ebf60603')]",
+                "principalId": "[parameters('controlPlaneMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            {
+              "condition": "[and(not(empty(parameters('shimMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('shimMiPrincipalId'), '12338af0-0e69-4776-bea7-57ae8d297424')]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bea7-57ae8d297424')]",
+                "principalId": "[parameters('shimMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            {
+              "condition": "[not(empty(parameters('controlPlaneMiPrincipalId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, parameters('controlPlaneMiPrincipalId'), 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+                "principalId": "[parameters('controlPlaneMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ],
+          "outputs": {
+            "kvCryptoOfficerRoleAssignmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault Crypto Officer role assignment resource ID (if created)"
+              },
+              "value": "[if(and(not(empty(parameters('controlPlaneMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('controlPlaneMiPrincipalId'), '14b46e9e-c2b7-41b4-b07b-48a6ebf60603')), '')]"
+            },
+            "kvCryptoUserRoleAssignmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault Crypto User role assignment resource ID (if created)"
+              },
+              "value": "[if(and(not(empty(parameters('shimMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('shimMiPrincipalId'), '12338af0-0e69-4776-bea7-57ae8d297424')), '')]"
+            },
+            "tier3ContributorRoleAssignmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "Tier 3 Contributor role assignment resource ID (if created)"
+              },
+              "value": "[if(not(empty(parameters('controlPlaneMiPrincipalId'))), resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, parameters('controlPlaneMiPrincipalId'), 'b24988ac-6180-42a0-ab88-20f7382dd24c')), '')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "managedIdentity",
+        "rgTier3"
       ]
     },
     "alerts": {
@@ -2395,7 +2844,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "14300080692280396717"
+              "templateHash": "1669177243739180886"
             }
           },
           "parameters": {
@@ -2492,61 +2941,44 @@
                 ],
                 "groupShortName": "[format('rac-{0}', parameters('racEnv'))]",
                 "enabled": true,
-                "webhookReceivers": "[if(not(empty(parameters('actionGroupWebhookUri'))), createArray(createObject('name', 'webhook-receiver', 'objectId', null(), 'serviceUri', parameters('actionGroupWebhookUri'), 'useCommonAlertSchema', true())), createArray())]"
+                "webhookReceivers": "[if(not(empty(parameters('actionGroupWebhookUri'))), createArray(createObject('name', 'webhook-receiver', 'serviceUri', parameters('actionGroupWebhookUri'), 'useCommonAlertSchema', true())), createArray())]"
               }
             },
             {
               "condition": "[not(empty(parameters('shimAppId')))]",
-              "type": "Microsoft.Insights/metricAlerts",
-              "apiVersion": "2018-03-01",
+              "type": "Microsoft.Insights/scheduledQueryRules",
+              "apiVersion": "2023-03-15-preview",
               "name": "[format('alert-shim-5xx-{0}', parameters('racEnv'))]",
-              "location": "global",
+              "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "properties": {
                 "description": "Shim application 5xx error rate > 1% over 5 minutes",
                 "enabled": true,
-                "severity": 1,
+                "severity": 2,
                 "scopes": [
-                  "[parameters('shimAppId')]"
+                  "[parameters('logAnalyticsWorkspaceId')]"
                 ],
                 "evaluationFrequency": "PT1M",
                 "windowSize": "PT5M",
                 "criteria": {
-                  "odata.type": "Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria",
                   "allOf": [
                     {
-                      "name": "5xx-rate",
-                      "metricName": "Requests",
-                      "metricNamespace": "Microsoft.App/containerApps",
+                      "query": "          ContainerAppConsoleLogs_CL\n          | where ContainerAppName_s == \"shim\"\n          | summarize total = count(), fivexx = countif(StatusCode_d >= 500) by bin(TimeGenerated, 1m)\n          | extend rate = fivexx * 100.0 / total\n          | where rate > 1.0 and total > 20\n          ",
+                      "timeAggregation": "Count",
                       "operator": "GreaterThan",
-                      "threshold": 1,
-                      "timeAggregation": "Total",
-                      "dimensions": [
-                        {
-                          "name": "statusCodeCategory",
-                          "operator": "Include",
-                          "values": [
-                            "5xx"
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "name": "total-requests",
-                      "metricName": "Requests",
-                      "metricNamespace": "Microsoft.App/containerApps",
-                      "operator": "GreaterThan",
-                      "threshold": 100,
-                      "timeAggregation": "Total"
+                      "threshold": 0,
+                      "failingPeriods": {
+                        "numberOfEvaluationPeriods": 1,
+                        "minFailingPeriodsToAlert": 1
+                      }
                     }
                   ]
                 },
-                "actions": [
-                  {
-                    "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]",
-                    "webHookProperties": {}
-                  }
-                ]
+                "actions": {
+                  "actionGroups": [
+                    "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+                  ]
+                }
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
@@ -2554,56 +2986,39 @@
             },
             {
               "condition": "[not(empty(parameters('controlPlaneAppId')))]",
-              "type": "Microsoft.Insights/metricAlerts",
-              "apiVersion": "2018-03-01",
+              "type": "Microsoft.Insights/scheduledQueryRules",
+              "apiVersion": "2023-03-15-preview",
               "name": "[format('alert-controlplane-5xx-{0}', parameters('racEnv'))]",
-              "location": "global",
+              "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "properties": {
                 "description": "Control Plane application 5xx error rate > 1% over 5 minutes",
                 "enabled": true,
-                "severity": 1,
+                "severity": 2,
                 "scopes": [
-                  "[parameters('controlPlaneAppId')]"
+                  "[parameters('logAnalyticsWorkspaceId')]"
                 ],
                 "evaluationFrequency": "PT1M",
                 "windowSize": "PT5M",
                 "criteria": {
-                  "odata.type": "Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria",
                   "allOf": [
                     {
-                      "name": "5xx-rate",
-                      "metricName": "Requests",
-                      "metricNamespace": "Microsoft.App/containerApps",
+                      "query": "          ContainerAppConsoleLogs_CL\n          | where ContainerAppName_s == \"controlplane\"\n          | summarize total = count(), fivexx = countif(StatusCode_d >= 500) by bin(TimeGenerated, 1m)\n          | extend rate = fivexx * 100.0 / total\n          | where rate > 1.0 and total > 20\n          ",
+                      "timeAggregation": "Count",
                       "operator": "GreaterThan",
-                      "threshold": 1,
-                      "timeAggregation": "Total",
-                      "dimensions": [
-                        {
-                          "name": "statusCodeCategory",
-                          "operator": "Include",
-                          "values": [
-                            "5xx"
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "name": "total-requests",
-                      "metricName": "Requests",
-                      "metricNamespace": "Microsoft.App/containerApps",
-                      "operator": "GreaterThan",
-                      "threshold": 100,
-                      "timeAggregation": "Total"
+                      "threshold": 0,
+                      "failingPeriods": {
+                        "numberOfEvaluationPeriods": 1,
+                        "minFailingPeriodsToAlert": 1
+                      }
                     }
                   ]
                 },
-                "actions": [
-                  {
-                    "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]",
-                    "webHookProperties": {}
-                  }
-                ]
+                "actions": {
+                  "actionGroups": [
+                    "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+                  ]
+                }
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
@@ -2629,6 +3044,7 @@
                   "allOf": [
                     {
                       "name": "connection-failures",
+                      "criterionType": "StaticThresholdCriterion",
                       "metricName": "connections_failed",
                       "metricNamespace": "Microsoft.DBforPostgreSQL/flexibleServers",
                       "operator": "GreaterThan",
@@ -2668,6 +3084,7 @@
                   "allOf": [
                     {
                       "name": "access-denied",
+                      "criterionType": "StaticThresholdCriterion",
                       "metricName": "ServiceApiResult",
                       "metricNamespace": "Microsoft.KeyVault/vaults",
                       "operator": "GreaterThan",
@@ -2714,7 +3131,7 @@
                 "criteria": {
                   "allOf": [
                     {
-                      "query": "          // Placeholder query: identifies pipeline submissions without terminal verdict\n          // Phase 3 will provide actual structured log query\n          RAC_PipelineLog_CL\n          | where event_type == \"pipeline_started\"\n          | where not (event_type == \"pipeline_verdict\")\n          | summarize count()\n          ",
+                      "query": "          RAC_PipelineLog_CL\n          | where event_type == \"pipeline_started\"\n          | where not (event_type == \"pipeline_verdict\")\n          | summarize count()\n          ",
                       "timeAggregation": "Count",
                       "operator": "GreaterThan",
                       "threshold": 0,
@@ -2725,11 +3142,11 @@
                     }
                   ]
                 },
-                "actions": [
-                  {
-                    "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
-                  }
-                ]
+                "actions": {
+                  "actionGroups": [
+                    "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+                  ]
+                }
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
@@ -2785,7 +3202,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "4880570899844040401"
+              "templateHash": "2231735750529503630"
             }
           },
           "parameters": {
@@ -2872,7 +3289,7 @@
             {
               "type": "Microsoft.OperationalInsights/workspaces/dataExports",
               "apiVersion": "2020-08-01",
-              "name": "[format('{0}/dataexport-accesslogs-{1}', last(split(parameters('logAnalyticsWorkspaceId'), '/')), parameters('racEnv'))]",
+              "name": "[format('{0}/{1}', last(split(parameters('logAnalyticsWorkspaceId'), '/')), format('dataexport-accesslogs-{0}', parameters('racEnv')))]",
               "properties": {
                 "destination": {
                   "resourceId": "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]",
@@ -2893,7 +3310,7 @@
             {
               "type": "Microsoft.OperationalInsights/workspaces/dataExports",
               "apiVersion": "2020-08-01",
-              "name": "[format('{0}/dataexport-approval-{1}', last(split(parameters('logAnalyticsWorkspaceId'), '/')), parameters('racEnv'))]",
+              "name": "[format('{0}/{1}', last(split(parameters('logAnalyticsWorkspaceId'), '/')), format('dataexport-approval-{0}', parameters('racEnv')))]",
               "properties": {
                 "destination": {
                   "resourceId": "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]",

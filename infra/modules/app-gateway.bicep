@@ -14,8 +14,10 @@ param appGwSubnetId string
 param parentDomain string
 
 @description('TLS certificate Key Vault secret ID (full versioned secret URI)')
-@secure()
 param tlsCertKvSecretId string
+
+@description('App Gateway managed identity resource ID')
+param appGwMiResourceId string
 
 @description('Resource tags')
 param tags object
@@ -38,6 +40,9 @@ resource publicIP 'Microsoft.Network/publicIPAddresses@2023-11-01' = {
     publicIPAllocationMethod: 'Static'
     publicIPAddressVersion: 'IPv4'
     idleTimeoutInMinutes: 4
+    dnsSettings: {
+      domainNameLabel: 'appgw-rac-${racEnv}-${uniqueString(resourceGroup().id)}'
+    }
   }
 }
 
@@ -73,6 +78,12 @@ resource appGateway 'Microsoft.Network/applicationGateways@2023-11-01' = {
   name: appGwName
   location: location
   tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${appGwMiResourceId}': {}
+    }
+  }
   properties: {
     sku: {
       name: 'WAF_v2'
@@ -159,6 +170,7 @@ resource appGateway 'Microsoft.Network/applicationGateways@2023-11-01' = {
         name: 'appGatewayRoutingRule'
         properties: {
           ruleType: 'Basic'
+          priority: 100
           httpListener: {
             id: '${appGwId}/httpListeners/appGatewayHttpsListener'
           }
@@ -166,7 +178,7 @@ resource appGateway 'Microsoft.Network/applicationGateways@2023-11-01' = {
             id: '${appGwId}/backendAddressPools/appGatewayBackendPool'
           }
           backendHttpSettings: {
-            id: '${appGwId}/backendHttpSettings/appGatewayBackendHttpSettings'
+            id: '${appGwId}/backendHttpSettingsCollection/appGatewayBackendHttpSettings'
           }
         }
       }
@@ -189,7 +201,7 @@ resource appGateway 'Microsoft.Network/applicationGateways@2023-11-01' = {
 output appGatewayId string = appGateway.id
 
 @description('Application Gateway public IP FQDN')
-output appGatewayPublicFqdn string = publicIP.properties.dnsSettings != null && publicIP.properties.dnsSettings.fqdn != null ? publicIP.properties.dnsSettings.fqdn : publicIP.properties.ipAddress
+output appGatewayPublicFqdn string = publicIP.properties.dnsSettings.fqdn
 
 @description('Application Gateway public IP address')
 output appGatewayPublicIp string = publicIP.properties.ipAddress

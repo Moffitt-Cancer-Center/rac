@@ -1,14 +1,14 @@
 @description('Azure region for all resources')
 param location string
 
-@description('RAC deployment environment (dev, staging, prod)')
-param racEnv string
-
 @description('Storage account name (must be globally unique, 3-24 lowercase alphanumeric)')
 param storageAccountName string
 
 @description('Private Endpoint subnet resource ID')
 param peSubnetId string
+
+@description('VNet resource ID for private DNS zone linking')
+param vnetId string
 
 @description('Storage SKU (Standard_GRS for prod, Standard_LRS for dev)')
 param sku string = 'Standard_GRS'
@@ -40,6 +40,16 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 resource blobServices 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
   parent: storageAccount
   name: 'default'
+  properties: {
+    deleteRetentionPolicy: {
+      enabled: true
+      days: 7
+    }
+    containerDeleteRetentionPolicy: {
+      enabled: true
+      days: 7
+    }
+  }
 }
 
 // Containers: researcher-uploads, scan-artifacts, sboms, cost-exports, build-logs
@@ -177,6 +187,26 @@ resource managementPolicy 'Microsoft.Storage/storageAccounts/managementPolicies@
   }
 }
 
+// Private DNS zone for Blob Storage
+resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: 'privatelink.blob.core.windows.net'
+  location: 'global'
+  tags: tags
+}
+
+// VNet link for private DNS zone
+resource privateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  parent: privateDnsZone
+  name: 'link-blob-${location}'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: vnetId
+    }
+  }
+}
+
 // Private endpoint for the blob subresource
 resource blobPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
   name: 'pe-${storageAccountName}-blob'
@@ -194,6 +224,22 @@ resource blobPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
           groupIds: [
             'blob'
           ]
+        }
+      }
+    ]
+  }
+}
+
+// Private DNS Zone Group for Private Endpoint
+resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
+  parent: blobPrivateEndpoint
+  name: 'blob-zone-group'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'blob-config'
+        properties: {
+          privateDnsZoneId: privateDnsZone.id
         }
       }
     ]

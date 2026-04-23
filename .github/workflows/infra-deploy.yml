@@ -67,6 +67,7 @@ permissions:
 jobs:
   whatif-dev:
     name: What-if (dev)
+    if: github.event_name == 'push' || github.event.inputs.environment == 'dev'
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -83,10 +84,15 @@ jobs:
           az deployment sub what-if \
             --location ${{ vars.AZURE_LOCATION }} \
             --template-file infra/main.bicep \
-            --parameters infra/environments/dev.bicepparam
+            --parameters infra/environments/dev.bicepparam \
+            --parameters pgAdminPassword=$RAC_PG_ADMIN_PASSWORD appGwTlsCertKvSecretId=$RAC_APPGW_TLS_CERT_KV_SECRET_ID
+        env:
+          RAC_PG_ADMIN_PASSWORD: ${{ secrets.RAC_PG_ADMIN_PASSWORD }}
+          RAC_APPGW_TLS_CERT_KV_SECRET_ID: ${{ secrets.RAC_APPGW_TLS_CERT_KV_SECRET_ID }}
 
   deploy-dev:
     name: Deploy (dev)
+    if: github.event_name == 'push' || github.event.inputs.environment == 'dev'
     needs: whatif-dev
     runs-on: ubuntu-latest
     environment: dev
@@ -105,10 +111,15 @@ jobs:
             --name rac-dev-${{ github.run_id }} \
             --location ${{ vars.AZURE_LOCATION }} \
             --template-file infra/main.bicep \
-            --parameters infra/environments/dev.bicepparam
+            --parameters infra/environments/dev.bicepparam \
+            --parameters pgAdminPassword=$RAC_PG_ADMIN_PASSWORD appGwTlsCertKvSecretId=$RAC_APPGW_TLS_CERT_KV_SECRET_ID
+        env:
+          RAC_PG_ADMIN_PASSWORD: ${{ secrets.RAC_PG_ADMIN_PASSWORD }}
+          RAC_APPGW_TLS_CERT_KV_SECRET_ID: ${{ secrets.RAC_APPGW_TLS_CERT_KV_SECRET_ID }}
 
   deploy-staging:
     name: Deploy (staging)
+    if: (github.event_name == 'push' && needs.deploy-dev.result == 'success') || github.event.inputs.environment == 'staging'
     needs: deploy-dev
     runs-on: ubuntu-latest
     environment: staging
@@ -127,10 +138,15 @@ jobs:
             --name rac-staging-${{ github.run_id }} \
             --location ${{ vars.AZURE_LOCATION }} \
             --template-file infra/main.bicep \
-            --parameters infra/environments/staging.bicepparam
+            --parameters infra/environments/staging.bicepparam \
+            --parameters pgAdminPassword=$RAC_PG_ADMIN_PASSWORD appGwTlsCertKvSecretId=$RAC_APPGW_TLS_CERT_KV_SECRET_ID
+        env:
+          RAC_PG_ADMIN_PASSWORD: ${{ secrets.RAC_PG_ADMIN_PASSWORD }}
+          RAC_APPGW_TLS_CERT_KV_SECRET_ID: ${{ secrets.RAC_APPGW_TLS_CERT_KV_SECRET_ID }}
 
   deploy-prod:
     name: Deploy (prod)
+    if: (github.event_name == 'push' && needs.deploy-staging.result == 'success') || github.event.inputs.environment == 'prod'
     needs: deploy-staging
     runs-on: ubuntu-latest
     environment: prod
@@ -149,4 +165,8 @@ jobs:
             --name rac-prod-${{ github.run_id }} \
             --location ${{ vars.AZURE_LOCATION }} \
             --template-file infra/main.bicep \
-            --parameters infra/environments/prod.bicepparam
+            --parameters infra/environments/prod.bicepparam \
+            --parameters pgAdminPassword=$RAC_PG_ADMIN_PASSWORD appGwTlsCertKvSecretId=$RAC_APPGW_TLS_CERT_KV_SECRET_ID
+        env:
+          RAC_PG_ADMIN_PASSWORD: ${{ secrets.RAC_PG_ADMIN_PASSWORD }}
+          RAC_APPGW_TLS_CERT_KV_SECRET_ID: ${{ secrets.RAC_APPGW_TLS_CERT_KV_SECRET_ID }}

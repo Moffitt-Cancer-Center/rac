@@ -21,6 +21,13 @@ resource shimMi 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-07-31-pre
   tags: tags
 }
 
+// App Gateway managed identity
+resource appGwMi 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-07-31-preview' = {
+  name: 'id-rac-appgw-${racEnv}'
+  location: location
+  tags: tags
+}
+
 @description('Control Plane managed identity resource ID')
 output controlPlaneMiResourceId string = controlPlaneMi.id
 
@@ -38,3 +45,12 @@ output shimMiPrincipalId string = shimMi.properties.principalId
 
 @description('Shim managed identity client ID')
 output shimMiClientId string = shimMi.properties.clientId
+
+@description('App Gateway managed identity resource ID')
+output appGwMiResourceId string = appGwMi.id
+
+@description('App Gateway managed identity principal ID')
+output appGwMiPrincipalId string = appGwMi.properties.principalId
+
+@description('App Gateway managed identity client ID')
+output appGwMiClientId string = appGwMi.properties.clientId

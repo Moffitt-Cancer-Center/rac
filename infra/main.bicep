@@ -37,9 +37,6 @@ param appGwTlsCertKvSecretId string
 @description('Control Plane managed identity principal ID (empty on first deploy; populated in Phase 5 Task 1 re-deploy)')
 param controlPlaneIdentityPrincipalId string = ''
 
-@description('Shim managed identity principal ID (empty on first deploy; populated in Phase 6)')
-param shimMiPrincipalId string = ''
-
 @description('VNet third octet (10/20/30 for dev/staging/prod)')
 param vnetOctet int
 
@@ -127,7 +124,6 @@ module logAnalytics 'modules/log-analytics.bicep' = {
   name: 'deploy-loganalytics'
   params: {
     location: location
-    racEnv: racEnv
     workspaceName: workspaceName
     componentName: componentName
     retentionDays: 30
@@ -140,10 +136,10 @@ module keyVault 'modules/key-vault.bicep' = {
   name: 'deploy-keyvault'
   params: {
     location: location
-    racEnv: racEnv
     kvName: kvName
     tenantId: idpTenantId
     peSubnetId: network.outputs.peSubnetId
+    vnetId: network.outputs.vnetId
     enablePurgeProtection: kvEnablePurgeProtection
     softDeleteRetentionInDays: kvSoftDeleteRetentionInDays
     tags: commonTags
@@ -155,9 +151,9 @@ module blobStorage 'modules/blob-storage.bicep' = {
   name: 'deploy-blobstorage'
   params: {
     location: location
-    racEnv: racEnv
     storageAccountName: storageAccountName
     peSubnetId: network.outputs.peSubnetId
+    vnetId: network.outputs.vnetId
     sku: (racEnv == 'dev') ? 'Standard_LRS' : 'Standard_GRS'
     tags: commonTags
   }
@@ -168,7 +164,6 @@ module postgres 'modules/postgres.bicep' = {
   name: 'deploy-postgres'
   params: {
     location: location
-    racEnv: racEnv
     serverName: pgServerName
     adminPassword: pgAdminPassword
     skuName: pgSkuName
@@ -176,7 +171,10 @@ module postgres 'modules/postgres.bicep' = {
     storageSizeGB: pgStorageSizeGB
     haMode: pgHaMode
     backupRetentionDays: pgBackupRetentionDays
-    pgSubnetId: network.outputs.pgSubnetId
+    peSubnetId: network.outputs.peSubnetId
+    vnetId: network.outputs.vnetId
+    extensions: ['pg_uuidv7']
+    geoRedundantBackup: (racEnv == 'dev') ? 'Disabled' : 'Enabled'
     tags: commonTags
   }
 }
@@ -198,7 +196,6 @@ module acaEnvironment 'modules/aca-env.bicep' = {
   name: 'deploy-acaenv'
   params: {
     location: location
-    racEnv: racEnv
     envName: 'aca-rac-${racEnv}'
     acaSubnetId: network.outputs.acaSubnetId
     workspaceCustomerId: logAnalytics.outputs.workspaceCustomerId
@@ -229,6 +226,7 @@ module appGateway 'modules/app-gateway.bicep' = {
     appGwSubnetId: network.outputs.appGwSubnetId
     parentDomain: parentDomain
     tlsCertKvSecretId: appGwTlsCertKvSecretId
+    appGwMiResourceId: managedIdentity.outputs.appGwMiResourceId
     tags: commonTags
   }
 }
