@@ -88,3 +88,35 @@ class AgentRepo:
         self.session.add(agent)
         await self.session.flush()
         return agent
+
+    async def update_agent(
+        self,
+        agent_id: UUID,
+        name: str | None = None,
+        enabled: bool | None = None,
+        metadata: dict | None = None,
+    ) -> Agent | None:
+        """Update an agent's properties.
+
+        Args:
+            agent_id: UUID of the agent to update.
+            name: New name (if provided).
+            enabled: New enabled state (if provided).
+            metadata: New metadata (if provided).
+
+        Returns:
+            Updated Agent record or None if not found.
+        """
+        agent = await self.get_by_id(agent_id)
+        if not agent:
+            return None
+
+        if name is not None:
+            agent.name = name
+        if enabled is not None:
+            agent.enabled = enabled
+        if metadata is not None:
+            agent.metadata = metadata
+
+        await self.session.flush()
+        return agent

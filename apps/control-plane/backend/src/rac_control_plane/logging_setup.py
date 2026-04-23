@@ -41,7 +41,9 @@ def configure_logging(settings: Settings) -> None:
     app_insights_conn_str = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
     if app_insights_conn_str:
         try:
-            from opencensus.ext.azure.log_exporter import AzureLogHandler  # type: ignore  # noqa: F401
+            from opencensus.ext.azure.log_exporter import (  # type: ignore  # noqa: F401
+                AzureLogHandler,
+            )
 
             # Note: structlog with JSON output sends to stdout/stderr;
             # App Insights handler would be added to stdlib logging if stdlib integration enabled

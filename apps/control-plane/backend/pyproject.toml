@@ -31,7 +31,7 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-grpc",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest",
     "pytest-asyncio",
@@ -40,6 +40,9 @@ dev = [
     "httpx",
     "ruff",
     "mypy",
+    "hypothesis",
+    "pyjwt",
+    "docker",
 ]
 
 [tool.ruff]

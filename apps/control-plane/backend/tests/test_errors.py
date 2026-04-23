@@ -5,7 +5,6 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from rac_control_plane.errors import (
-    ApiError,
     AuthError,
     ConflictError,
     ForbiddenError,

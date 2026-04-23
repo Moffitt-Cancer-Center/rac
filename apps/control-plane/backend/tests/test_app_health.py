@@ -1,7 +1,6 @@
 """Integration tests for FastAPI app health and error handling."""
 import os
 
-import pytest
 from starlette.testclient import TestClient
 
 from rac_control_plane.main import app
