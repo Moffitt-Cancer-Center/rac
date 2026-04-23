@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "6967461495362003969"
+      "templateHash": "17792868116885973534"
     }
   },
   "parameters": {
@@ -13,12 +13,6 @@
       "type": "string",
       "metadata": {
         "description": "Azure region for all resources"
-      }
-    },
-    "racEnv": {
-      "type": "string",
-      "metadata": {
-        "description": "RAC deployment environment (dev, staging, prod)"
       }
     },
     "envName": {
@@ -64,6 +58,9 @@
       }
     }
   },
+  "variables": {
+    "laApiVersion": "2023-09-01"
+  },
   "resources": [
     {
       "type": "Microsoft.App/managedEnvironments",
@@ -76,7 +73,7 @@
           "destination": "log-analytics",
           "logAnalyticsConfiguration": {
             "customerId": "[parameters('workspaceCustomerId')]",
-            "sharedKey": "[listKeys(parameters('workspaceId'), '2023-09-01').primarySharedKey]"
+            "sharedKey": "[listKeys(parameters('workspaceId'), variables('laApiVersion')).primarySharedKey]"
           }
         },
         "vnetConfiguration": {
@@ -84,16 +81,7 @@
           "internal": true
         },
         "zoneRedundant": "[parameters('zoneRedundant')]",
-        "workloadProfiles": [
-          {
-            "name": "Consumption",
-            "workloadProfileType": "Consumption"
-          },
-          {
-            "name": "apps",
-            "workloadProfileType": "[parameters('profileSku')]"
-          }
-        ]
+        "workloadProfiles": "[if(equals(parameters('profileSku'), 'Consumption'), createArray(createObject('name', 'Consumption', 'workloadProfileType', 'Consumption')), createArray(createObject('name', 'Consumption', 'workloadProfileType', 'Consumption'), createObject('name', 'apps', 'workloadProfileType', parameters('profileSku'), 'minimumCount', 1, 'maximumCount', 3)))]"
       }
     }
   ],

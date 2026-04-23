@@ -1,3 +1,5 @@
+import { roleIds } from './role-ids.bicep'
+
 @description('Parent DNS domain, e.g., rac.moffitt.org')
 param parentDomain string
 
@@ -17,10 +19,10 @@ resource dnsZone 'Microsoft.Network/dnsZones@2018-05-01' = {
 // Conditional role assignment: grant Control Plane MI DNS Zone Contributor role
 // Only created when controlPlaneIdentityPrincipalId is non-empty (Phase 5 re-deploy)
 resource dnsZoneRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(controlPlaneIdentityPrincipalId)) {
-  name: guid(dnsZone.id, controlPlaneIdentityPrincipalId, 'befefa01-2a29-4197-83a8-272ff33ce314')
+  name: guid(dnsZone.id, controlPlaneIdentityPrincipalId, roleIds.dnsZoneContributor)
   scope: dnsZone
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'befefa01-2a29-4197-83a8-272ff33ce314')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.dnsZoneContributor)
     principalId: controlPlaneIdentityPrincipalId
     principalType: 'ServicePrincipal'
   }

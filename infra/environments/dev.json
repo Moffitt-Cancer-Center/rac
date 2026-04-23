@@ -24,15 +24,10 @@
       "value": "rac-dev-pg"
     },
     "pgAdminPassword": {
-      "reference": {
-        "keyVault": {
-          "id": "/subscriptions/<subscription-id>/resourceGroups/<bootstrap-rg-name>/providers/Microsoft.KeyVault/vaults/<bootstrap-kv-name>"
-        },
-        "secretName": "pg-admin-password-dev"
-      }
+      "value": "dummy"
     },
     "appGwTlsCertKvSecretId": {
-      "value": "https://<bootstrap-kv-name>.vault.azure.net/secrets/appgw-cert-dev/<version>"
+      "value": "dummy"
     },
     "controlPlaneIdentityPrincipalId": {
       "value": ""

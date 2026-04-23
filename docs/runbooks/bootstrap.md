@@ -358,7 +358,34 @@ az security pricing list --query "[?name == 'Containers']" -o table
 # Container Registry → Security → Vulnerabilities
 ```
 
-## 9. Idempotency Check
+## 9. Phase 5 Bridge Re-deploy
+
+After Phase 5 provisioning completes (see `docs/implementation-plans/2026-04-23-rac-v1/phase_05.md`), the Control Plane managed identity's principal ID will be available as a deploy output. Re-run the infra-deploy workflow to enable the DNS Zone Contributor role assignment on the child DNS zone.
+
+Capture the Control Plane MI principal ID from the Phase 1 deployment outputs:
+
+```bash
+az deployment sub show \
+  --name rac-dev-<RUN_ID> \
+  --query "properties.outputs.controlPlaneMiPrincipalId.value" -o tsv
+```
+
+Then re-run the infra-deploy workflow with the `controlPlaneIdentityPrincipalId` parameter supplied (this parameter is currently empty and the DNS role assignment is skipped):
+
+```bash
+# Via the CLI (or trigger via GitHub Actions workflow_dispatch)
+az deployment sub create \
+  --location $AZURE_LOCATION \
+  --template-file infra/main.bicep \
+  --parameters infra/environments/dev.bicepparam \
+  --parameters controlPlaneIdentityPrincipalId=<output-from-phase5> \
+  pgAdminPassword=$RAC_PG_ADMIN_PASSWORD \
+  appGwTlsCertKvSecretId=$RAC_APPGW_TLS_CERT_KV_SECRET_ID
+```
+
+This second deploy is idempotent: all other resources remain unchanged; only the conditional DNS Zone Contributor role assignment is created.
+
+## 10. Idempotency Check
 
 Run `infra-deploy` again (or trigger manually) against the same subscription.
 
@@ -390,6 +417,6 @@ The `whatif-dev` job should report zero changes. If resources appear to be recre
 
 ## Next Steps
 
-1. Confirm all Tier 2 infrastructure is operational (Task 1 acceptance checks).
+1. Confirm all Tier 2 infrastructure is operational (Task 17 acceptance checks).
 2. Proceed to Phase 2: Control Plane skeleton (auth, submission schema, CRUD operations).
-3. After Phase 2, run `infra-deploy` a second time to wire up Control Plane identity permissions (re-deploy loop in Task 12B).
+3. After Phase 5 completes, re-run `infra-deploy` with `controlPlaneIdentityPrincipalId` to wire up DNS Zone Contributor role (see section 9: Phase 5 Bridge Re-deploy).

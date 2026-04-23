@@ -59,15 +59,6 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           privateEndpointNetworkPolicies: 'Disabled'
         }
       }
-      {
-        name: 'snet-pg'
-        properties: {
-          addressPrefix: '10.${vnetOctet}.10.0/24'
-          serviceEndpoints: []
-          privateLinkServiceNetworkPolicies: 'Enabled'
-          privateEndpointNetworkPolicies: 'Enabled'
-        }
-      }
     ]
   }
 }
@@ -83,6 +74,3 @@ output appGwSubnetId string = '${vnet.id}/subnets/snet-appgw'
 
 @description('Private Endpoint subnet resource ID')
 output peSubnetId string = '${vnet.id}/subnets/snet-pe'
-
-@description('Postgres private endpoint subnet resource ID')
-output pgSubnetId string = '${vnet.id}/subnets/snet-pg'

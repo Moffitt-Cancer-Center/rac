@@ -25,7 +25,8 @@ param kvId string
 @description('Log Analytics workspace resource ID')
 param logAnalyticsWorkspaceId string
 
-@description('Pipeline timeout in minutes (used for stuck-pipeline alert threshold)')
+@description('Pipeline timeout in minutes (used for stuck-pipeline alert threshold). Max 180 min due to Azure 360-min schema limit (2x multiplier for alert window).')
+@maxValue(180)
 param pipelineTimeoutMinutes int = 120
 
 @description('Resource tags applied to all resources')
@@ -242,10 +243,19 @@ resource alertPipelineStuck 'Microsoft.Insights/scheduledQueryRules@2023-03-15-p
       allOf: [
         {
           query: '''
-          RAC_PipelineLog_CL
-          | where event_type == "pipeline_started"
-          | where not (event_type == "pipeline_verdict")
-          | summarize count()
+          let window_start = ago(${2 * pipelineTimeoutMinutes}m);
+          let started = RAC_PipelineLog_CL
+            | where TimeGenerated between (window_start .. now())
+            | where event_type_s == "pipeline_started"
+            | project correlation_id_s, started_at = TimeGenerated;
+          let verdicts = RAC_PipelineLog_CL
+            | where TimeGenerated between (window_start .. now())
+            | where event_type_s == "pipeline_verdict"
+            | project correlation_id_s;
+          started
+          | where correlation_id_s !in (verdicts)
+          | where started_at < ago(${pipelineTimeoutMinutes}m)
+          | summarize stuck_count = count()
           '''
           timeAggregation: 'Count'
           operator: 'GreaterThan'

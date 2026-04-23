@@ -189,7 +189,7 @@ resource managementPolicy 'Microsoft.Storage/storageAccounts/managementPolicies@
 
 // Private DNS zone for Blob Storage
 resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
-  name: 'privatelink.blob.core.windows.net'
+  name: 'privatelink.blob.${environment().suffixes.storage}'
   location: 'global'
   tags: tags
 }

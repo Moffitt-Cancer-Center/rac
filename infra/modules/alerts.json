@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "14300080692280396717"
+      "templateHash": "3108928223028088444"
     }
   },
   "parameters": {
@@ -70,8 +70,9 @@
     "pipelineTimeoutMinutes": {
       "type": "int",
       "defaultValue": 120,
+      "maxValue": 180,
       "metadata": {
-        "description": "Pipeline timeout in minutes (used for stuck-pipeline alert threshold)"
+        "description": "Pipeline timeout in minutes (used for stuck-pipeline alert threshold). Max 180 min due to Azure 360-min schema limit (2x multiplier for alert window)."
       }
     },
     "tags": {
@@ -102,61 +103,44 @@
         ],
         "groupShortName": "[format('rac-{0}', parameters('racEnv'))]",
         "enabled": true,
-        "webhookReceivers": "[if(not(empty(parameters('actionGroupWebhookUri'))), createArray(createObject('name', 'webhook-receiver', 'objectId', null(), 'serviceUri', parameters('actionGroupWebhookUri'), 'useCommonAlertSchema', true())), createArray())]"
+        "webhookReceivers": "[if(not(empty(parameters('actionGroupWebhookUri'))), createArray(createObject('name', 'webhook-receiver', 'serviceUri', parameters('actionGroupWebhookUri'), 'useCommonAlertSchema', true())), createArray())]"
       }
     },
     {
       "condition": "[not(empty(parameters('shimAppId')))]",
-      "type": "Microsoft.Insights/metricAlerts",
-      "apiVersion": "2018-03-01",
+      "type": "Microsoft.Insights/scheduledQueryRules",
+      "apiVersion": "2023-03-15-preview",
       "name": "[format('alert-shim-5xx-{0}', parameters('racEnv'))]",
-      "location": "global",
+      "location": "[parameters('location')]",
       "tags": "[parameters('tags')]",
       "properties": {
         "description": "Shim application 5xx error rate > 1% over 5 minutes",
         "enabled": true,
-        "severity": 1,
+        "severity": 2,
         "scopes": [
-          "[parameters('shimAppId')]"
+          "[parameters('logAnalyticsWorkspaceId')]"
         ],
         "evaluationFrequency": "PT1M",
         "windowSize": "PT5M",
         "criteria": {
-          "odata.type": "Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria",
           "allOf": [
             {
-              "name": "5xx-rate",
-              "metricName": "Requests",
-              "metricNamespace": "Microsoft.App/containerApps",
+              "query": "          ContainerAppConsoleLogs_CL\n          | where ContainerAppName_s == \"shim\"\n          | summarize total = count(), fivexx = countif(StatusCode_d >= 500) by bin(TimeGenerated, 1m)\n          | extend rate = fivexx * 100.0 / total\n          | where rate > 1.0 and total > 20\n          ",
+              "timeAggregation": "Count",
               "operator": "GreaterThan",
-              "threshold": 1,
-              "timeAggregation": "Total",
-              "dimensions": [
-                {
-                  "name": "statusCodeCategory",
-                  "operator": "Include",
-                  "values": [
-                    "5xx"
-                  ]
-                }
-              ]
-            },
-            {
-              "name": "total-requests",
-              "metricName": "Requests",
-              "metricNamespace": "Microsoft.App/containerApps",
-              "operator": "GreaterThan",
-              "threshold": 100,
-              "timeAggregation": "Total"
+              "threshold": 0,
+              "failingPeriods": {
+                "numberOfEvaluationPeriods": 1,
+                "minFailingPeriodsToAlert": 1
+              }
             }
           ]
         },
-        "actions": [
-          {
-            "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]",
-            "webHookProperties": {}
-          }
-        ]
+        "actions": {
+          "actionGroups": [
+            "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+          ]
+        }
       },
       "dependsOn": [
         "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
@@ -164,56 +148,39 @@
     },
     {
       "condition": "[not(empty(parameters('controlPlaneAppId')))]",
-      "type": "Microsoft.Insights/metricAlerts",
-      "apiVersion": "2018-03-01",
+      "type": "Microsoft.Insights/scheduledQueryRules",
+      "apiVersion": "2023-03-15-preview",
       "name": "[format('alert-controlplane-5xx-{0}', parameters('racEnv'))]",
-      "location": "global",
+      "location": "[parameters('location')]",
       "tags": "[parameters('tags')]",
       "properties": {
         "description": "Control Plane application 5xx error rate > 1% over 5 minutes",
         "enabled": true,
-        "severity": 1,
+        "severity": 2,
         "scopes": [
-          "[parameters('controlPlaneAppId')]"
+          "[parameters('logAnalyticsWorkspaceId')]"
         ],
         "evaluationFrequency": "PT1M",
         "windowSize": "PT5M",
         "criteria": {
-          "odata.type": "Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria",
           "allOf": [
             {
-              "name": "5xx-rate",
-              "metricName": "Requests",
-              "metricNamespace": "Microsoft.App/containerApps",
+              "query": "          ContainerAppConsoleLogs_CL\n          | where ContainerAppName_s == \"controlplane\"\n          | summarize total = count(), fivexx = countif(StatusCode_d >= 500) by bin(TimeGenerated, 1m)\n          | extend rate = fivexx * 100.0 / total\n          | where rate > 1.0 and total > 20\n          ",
+              "timeAggregation": "Count",
               "operator": "GreaterThan",
-              "threshold": 1,
-              "timeAggregation": "Total",
-              "dimensions": [
-                {
-                  "name": "statusCodeCategory",
-                  "operator": "Include",
-                  "values": [
-                    "5xx"
-                  ]
-                }
-              ]
-            },
-            {
-              "name": "total-requests",
-              "metricName": "Requests",
-              "metricNamespace": "Microsoft.App/containerApps",
-              "operator": "GreaterThan",
-              "threshold": 100,
-              "timeAggregation": "Total"
+              "threshold": 0,
+              "failingPeriods": {
+                "numberOfEvaluationPeriods": 1,
+                "minFailingPeriodsToAlert": 1
+              }
             }
           ]
         },
-        "actions": [
-          {
-            "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]",
-            "webHookProperties": {}
-          }
-        ]
+        "actions": {
+          "actionGroups": [
+            "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+          ]
+        }
       },
       "dependsOn": [
         "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
@@ -239,6 +206,7 @@
           "allOf": [
             {
               "name": "connection-failures",
+              "criterionType": "StaticThresholdCriterion",
               "metricName": "connections_failed",
               "metricNamespace": "Microsoft.DBforPostgreSQL/flexibleServers",
               "operator": "GreaterThan",
@@ -278,6 +246,7 @@
           "allOf": [
             {
               "name": "access-denied",
+              "criterionType": "StaticThresholdCriterion",
               "metricName": "ServiceApiResult",
               "metricNamespace": "Microsoft.KeyVault/vaults",
               "operator": "GreaterThan",
@@ -324,7 +293,7 @@
         "criteria": {
           "allOf": [
             {
-              "query": "          // Placeholder query: identifies pipeline submissions without terminal verdict\n          // Phase 3 will provide actual structured log query\n          RAC_PipelineLog_CL\n          | where event_type == \"pipeline_started\"\n          | where not (event_type == \"pipeline_verdict\")\n          | summarize count()\n          ",
+              "query": "          let window_start = ago(${2 * pipelineTimeoutMinutes}m);\n          let started = RAC_PipelineLog_CL\n            | where TimeGenerated between (window_start .. now())\n            | where event_type_s == \"pipeline_started\"\n            | project correlation_id_s, started_at = TimeGenerated;\n          let verdicts = RAC_PipelineLog_CL\n            | where TimeGenerated between (window_start .. now())\n            | where event_type_s == \"pipeline_verdict\"\n            | project correlation_id_s;\n          started\n          | where correlation_id_s !in (verdicts)\n          | where started_at < ago(${pipelineTimeoutMinutes}m)\n          | summarize stuck_count = count()\n          ",
               "timeAggregation": "Count",
               "operator": "GreaterThan",
               "threshold": 0,
@@ -335,11 +304,11 @@
             }
           ]
         },
-        "actions": [
-          {
-            "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
-          }
-        ]
+        "actions": {
+          "actionGroups": [
+            "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+          ]
+        }
       },
       "dependsOn": [
         "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"

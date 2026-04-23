@@ -119,7 +119,12 @@ jobs:
 
   deploy-staging:
     name: Deploy (staging)
-    if: (github.event_name == 'push' && needs.deploy-dev.result == 'success') || github.event.inputs.environment == 'staging'
+    if: |
+      always() && (
+        (github.event_name == 'push' && needs.deploy-dev.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging' &&
+          (needs.deploy-dev.result == 'success' || needs.deploy-dev.result == 'skipped'))
+      )
     needs: deploy-dev
     runs-on: ubuntu-latest
     environment: staging
@@ -146,7 +151,12 @@ jobs:
 
   deploy-prod:
     name: Deploy (prod)
-    if: (github.event_name == 'push' && needs.deploy-staging.result == 'success') || github.event.inputs.environment == 'prod'
+    if: |
+      always() && (
+        (github.event_name == 'push' && needs.deploy-staging.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' &&
+          (needs.deploy-staging.result == 'success' || needs.deploy-staging.result == 'skipped'))
+      )
     needs: deploy-staging
     runs-on: ubuntu-latest
     environment: prod

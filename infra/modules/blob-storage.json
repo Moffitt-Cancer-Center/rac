@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "4394451603878801572"
+      "templateHash": "17585045916007464544"
     }
   },
   "parameters": {
@@ -13,12 +13,6 @@
       "type": "string",
       "metadata": {
         "description": "Azure region for all resources"
-      }
-    },
-    "racEnv": {
-      "type": "string",
-      "metadata": {
-        "description": "RAC deployment environment (dev, staging, prod)"
       }
     },
     "storageAccountName": {
@@ -31,6 +25,12 @@
       "type": "string",
       "metadata": {
         "description": "Private Endpoint subnet resource ID"
+      }
+    },
+    "vnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "VNet resource ID for private DNS zone linking"
       }
     },
     "sku": {
@@ -73,6 +73,16 @@
       "type": "Microsoft.Storage/storageAccounts/blobServices",
       "apiVersion": "2023-05-01",
       "name": "[format('{0}/{1}', parameters('storageAccountName'), 'default')]",
+      "properties": {
+        "deleteRetentionPolicy": {
+          "enabled": true,
+          "days": 7
+        },
+        "containerDeleteRetentionPolicy": {
+          "enabled": true,
+          "days": 7
+        }
+      },
       "dependsOn": [
         "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
       ]
@@ -229,6 +239,28 @@
       ]
     },
     {
+      "type": "Microsoft.Network/privateDnsZones",
+      "apiVersion": "2020-06-01",
+      "name": "[format('privatelink.blob.{0}', environment().suffixes.storage)]",
+      "location": "global",
+      "tags": "[parameters('tags')]"
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+      "apiVersion": "2020-06-01",
+      "name": "[format('{0}/{1}', format('privatelink.blob.{0}', environment().suffixes.storage), format('link-blob-{0}', parameters('location')))]",
+      "location": "global",
+      "properties": {
+        "registrationEnabled": false,
+        "virtualNetwork": {
+          "id": "[parameters('vnetId')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.blob.{0}', environment().suffixes.storage))]"
+      ]
+    },
+    {
       "type": "Microsoft.Network/privateEndpoints",
       "apiVersion": "2023-11-01",
       "name": "[format('pe-{0}-blob', parameters('storageAccountName'))]",
@@ -252,6 +284,25 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+      "apiVersion": "2023-11-01",
+      "name": "[format('{0}/{1}', format('pe-{0}-blob', parameters('storageAccountName')), 'blob-zone-group')]",
+      "properties": {
+        "privateDnsZoneConfigs": [
+          {
+            "name": "blob-config",
+            "properties": {
+              "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.blob.{0}', environment().suffixes.storage))]"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-blob', parameters('storageAccountName')))]",
+        "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.blob.{0}', environment().suffixes.storage))]"
       ]
     }
   ],

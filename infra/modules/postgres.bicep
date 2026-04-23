@@ -23,7 +23,7 @@ param haMode string
 @description('Backup retention days')
 param backupRetentionDays int
 
-@description('Postgres private endpoint subnet resource ID')
+@description('Private endpoint subnet resource ID')
 param peSubnetId string
 
 @description('VNet resource ID for private DNS zone linking')
@@ -61,6 +61,9 @@ resource postgresServer 'Microsoft.DBforPostgreSQL/flexibleServers@2023-06-01-pr
     highAvailability: {
       mode: haMode
     }
+    network: {
+      publicNetworkAccess: 'Disabled'
+    }
   }
 }
 
@@ -75,6 +78,7 @@ resource postgresConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configuration
 }
 
 // Private DNS zone for postgres
+// TODO: For sovereign/gov clouds, this should be dynamically determined
 resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
   name: 'privatelink.postgres.database.azure.com'
   location: 'global'

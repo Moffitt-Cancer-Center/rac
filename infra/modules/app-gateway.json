@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "12350808717761113628"
+      "templateHash": "7560816677529751929"
     }
   },
   "parameters": {
@@ -45,6 +45,12 @@
         "description": "TLS certificate Key Vault secret ID (full versioned secret URI)"
       }
     },
+    "appGwMiResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "App Gateway managed identity resource ID"
+      }
+    },
     "tags": {
       "type": "object",
       "metadata": {
@@ -74,7 +80,10 @@
       "properties": {
         "publicIPAllocationMethod": "Static",
         "publicIPAddressVersion": "IPv4",
-        "idleTimeoutInMinutes": 4
+        "idleTimeoutInMinutes": 4,
+        "dnsSettings": {
+          "domainNameLabel": "[format('appgw-rac-{0}-{1}', parameters('racEnv'), uniqueString(resourceGroup().id))]"
+        }
       }
     },
     {
@@ -107,6 +116,12 @@
       "name": "[parameters('appGwName')]",
       "location": "[parameters('location')]",
       "tags": "[parameters('tags')]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', parameters('appGwMiResourceId'))]": {}
+        }
+      },
       "properties": {
         "sku": {
           "name": "WAF_v2",
@@ -193,6 +208,7 @@
             "name": "appGatewayRoutingRule",
             "properties": {
               "ruleType": "Basic",
+              "priority": 100,
               "httpListener": {
                 "id": "[format('{0}/httpListeners/appGatewayHttpsListener', variables('appGwId'))]"
               },
@@ -200,7 +216,7 @@
                 "id": "[format('{0}/backendAddressPools/appGatewayBackendPool', variables('appGwId'))]"
               },
               "backendHttpSettings": {
-                "id": "[format('{0}/backendHttpSettings/appGatewayBackendHttpSettings', variables('appGwId'))]"
+                "id": "[format('{0}/backendHttpSettingsCollection/appGatewayBackendHttpSettings', variables('appGwId'))]"
               }
             }
           }
@@ -236,7 +252,7 @@
       "metadata": {
         "description": "Application Gateway public IP FQDN"
       },
-      "value": "[if(and(not(equals(reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings, null())), not(equals(reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings.fqdn, null()))), reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings.fqdn, reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').ipAddress)]"
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings.fqdn]"
     },
     "appGatewayPublicIp": {
       "type": "string",

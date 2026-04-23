@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
   "contentVersion": "1.0.0.0",
   "metadata": {
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "1101044586595305005"
+      "templateHash": "3034976571746177267"
     }
   },
   "parameters": {
@@ -23,6 +24,13 @@
         "description": "Shim managed identity principal ID (empty on first deploy; populated in Phase 6)"
       }
     },
+    "appGwMiPrincipalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "App Gateway managed identity principal ID (empty until MI is created)"
+      }
+    },
     "kvResourceId": {
       "type": "string",
       "defaultValue": "",
@@ -31,64 +39,120 @@
       }
     }
   },
-  "resources": [
-    {
+  "variables": {
+    "roleIds": {
+      "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
+      "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
+      "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+      "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
+      "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
+      "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+      "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12"
+    }
+  },
+  "resources": {
+    "kv": {
+      "condition": "[not(empty(parameters('kvResourceId')))]",
+      "existing": true,
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2023-07-01",
+      "name": "[last(split(parameters('kvResourceId'), '/'))]"
+    },
+    "kvCryptoOfficerForControlPlane": {
       "condition": "[and(not(empty(parameters('controlPlaneMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/')))]",
-      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('controlPlaneMiPrincipalId'), '14b46e9e-c2b7-41b4-b07b-48a6ebf60603')]",
+      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('controlPlaneMiPrincipalId'), variables('roleIds').keyVaultCryptoOfficer)]",
       "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '14b46e9e-c2b7-41b4-b07b-48a6ebf60603')]",
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultCryptoOfficer)]",
         "principalId": "[parameters('controlPlaneMiPrincipalId')]",
         "principalType": "ServicePrincipal"
       }
     },
-    {
+    "kvCryptoUserForShim": {
       "condition": "[and(not(empty(parameters('shimMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/')))]",
-      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('shimMiPrincipalId'), '12338af0-0e69-4776-bea7-57ae8d297424')]",
+      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('shimMiPrincipalId'), variables('roleIds').keyVaultCryptoUser)]",
       "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bea7-57ae8d297424')]",
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultCryptoUser)]",
         "principalId": "[parameters('shimMiPrincipalId')]",
         "principalType": "ServicePrincipal"
       }
     },
-    {
+    "kvSecretsUserForAppGw": {
+      "condition": "[and(not(empty(parameters('appGwMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/')))]",
+      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('appGwMiPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsUser)]",
+        "principalId": "[parameters('appGwMiPrincipalId')]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    "kvCertificatesUserForAppGw": {
+      "condition": "[and(not(empty(parameters('appGwMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/')))]",
+      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('appGwMiPrincipalId'), variables('roleIds').keyVaultCertificatesUser)]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultCertificatesUser)]",
+        "principalId": "[parameters('appGwMiPrincipalId')]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    "tier3ContributorForControlPlane": {
       "condition": "[not(empty(parameters('controlPlaneMiPrincipalId')))]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "name": "[guid(resourceGroup().id, parameters('controlPlaneMiPrincipalId'), 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+      "name": "[guid(resourceGroup().id, parameters('controlPlaneMiPrincipalId'), variables('roleIds').contributor)]",
       "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').contributor)]",
         "principalId": "[parameters('controlPlaneMiPrincipalId')]",
         "principalType": "ServicePrincipal"
       }
     }
-  ],
+  },
   "outputs": {
     "kvCryptoOfficerRoleAssignmentId": {
       "type": "string",
       "metadata": {
         "description": "Key Vault Crypto Officer role assignment resource ID (if created)"
       },
-      "value": "[if(and(not(empty(parameters('controlPlaneMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('controlPlaneMiPrincipalId'), '14b46e9e-c2b7-41b4-b07b-48a6ebf60603')), '')]"
+      "value": "[if(and(not(empty(parameters('controlPlaneMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('controlPlaneMiPrincipalId'), variables('roleIds').keyVaultCryptoOfficer)), '')]"
     },
     "kvCryptoUserRoleAssignmentId": {
       "type": "string",
       "metadata": {
         "description": "Key Vault Crypto User role assignment resource ID (if created)"
       },
-      "value": "[if(and(not(empty(parameters('shimMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('shimMiPrincipalId'), '12338af0-0e69-4776-bea7-57ae8d297424')), '')]"
+      "value": "[if(and(not(empty(parameters('shimMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('shimMiPrincipalId'), variables('roleIds').keyVaultCryptoUser)), '')]"
+    },
+    "kvSecretsUserRoleAssignmentId": {
+      "type": "string",
+      "metadata": {
+        "description": "Key Vault Secrets User role assignment for App Gateway (if created)"
+      },
+      "value": "[if(and(not(empty(parameters('appGwMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('appGwMiPrincipalId'), variables('roleIds').keyVaultSecretsUser)), '')]"
+    },
+    "kvCertificatesUserRoleAssignmentId": {
+      "type": "string",
+      "metadata": {
+        "description": "Key Vault Certificates User role assignment for App Gateway (if created)"
+      },
+      "value": "[if(and(not(empty(parameters('appGwMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('kvResourceId'), '/'))), parameters('appGwMiPrincipalId'), variables('roleIds').keyVaultCertificatesUser)), '')]"
     },
     "tier3ContributorRoleAssignmentId": {
       "type": "string",
       "metadata": {
         "description": "Tier 3 Contributor role assignment resource ID (if created)"
       },
-      "value": "[if(not(empty(parameters('controlPlaneMiPrincipalId'))), resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, parameters('controlPlaneMiPrincipalId'), 'b24988ac-6180-42a0-ab88-20f7382dd24c')), '')]"
+      "value": "[if(not(empty(parameters('controlPlaneMiPrincipalId'))), resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, parameters('controlPlaneMiPrincipalId'), variables('roleIds').contributor)), '')]"
     }
   }
 }

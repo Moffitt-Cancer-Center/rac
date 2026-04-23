@@ -1,8 +1,20 @@
+import { roleIds } from './role-ids.bicep'
+
+// ========== MODULE DOCUMENTATION ==========
+// This module is designed to be invoked MULTIPLE TIMES from main.bicep with different scopes.
+// Each invocation's `if` guards on non-empty params select which role assignments run:
+//   Invocation 1: scope=platform RG, KV role assignments (kvResourceId non-empty, tier3 params empty).
+//   Invocation 2: scope=Tier 3 RG, Contributor assignment (tier3 params non-empty, kvResourceId empty).
+// =========================================
+
 @description('Control Plane managed identity principal ID (empty on first deploy; populated in Phase 5 Task 1 re-deploy)')
 param controlPlaneMiPrincipalId string = ''
 
 @description('Shim managed identity principal ID (empty on first deploy; populated in Phase 6)')
 param shimMiPrincipalId string = ''
+
+@description('App Gateway managed identity principal ID (empty until MI is created)')
+param appGwMiPrincipalId string = ''
 
 @description('Key Vault resource ID (platform Key Vault, for KV assignments only)')
 param kvResourceId string = ''
@@ -17,27 +29,49 @@ resource kv 'Microsoft.KeyVault/vaults@2023-07-01' existing = if (!empty(kvResou
 }
 
 // Key Vault Crypto Officer role for Control Plane MI
-// Role ID: 14b46e9e-c2b7-41b4-b07b-48a6ebf60603
 // Allows the Control Plane to encrypt/decrypt secrets for Tier 3 provisioning
 resource kvCryptoOfficerForControlPlane 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(controlPlaneMiPrincipalId) && !empty(kvResourceId)) {
   scope: kv
-  name: guid(kv.id, controlPlaneMiPrincipalId, '14b46e9e-c2b7-41b4-b07b-48a6ebf60603')
+  name: guid(kv.id, controlPlaneMiPrincipalId, roleIds.keyVaultCryptoOfficer)
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '14b46e9e-c2b7-41b4-b07b-48a6ebf60603')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.keyVaultCryptoOfficer)
     principalId: controlPlaneMiPrincipalId
     principalType: 'ServicePrincipal'
   }
 }
 
 // Key Vault Crypto User role for Shim MI
-// Role ID: 12338af0-0e69-4776-bea7-57ae8d297424
 // Allows the Shim to read public keys for token validation (read-only crypto operations)
 resource kvCryptoUserForShim 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(shimMiPrincipalId) && !empty(kvResourceId)) {
   scope: kv
-  name: guid(kv.id, shimMiPrincipalId, '12338af0-0e69-4776-bea7-57ae8d297424')
+  name: guid(kv.id, shimMiPrincipalId, roleIds.keyVaultCryptoUser)
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bea7-57ae8d297424')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.keyVaultCryptoUser)
     principalId: shimMiPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Key Vault Secrets User role for App Gateway MI
+// Allows App Gateway to read TLS certificate from Key Vault
+resource kvSecretsUserForAppGw 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(appGwMiPrincipalId) && !empty(kvResourceId)) {
+  scope: kv
+  name: guid(kv.id, appGwMiPrincipalId, roleIds.keyVaultSecretsUser)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.keyVaultSecretsUser)
+    principalId: appGwMiPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Key Vault Certificates User role for App Gateway MI
+// Allows App Gateway to read TLS certificate details from Key Vault
+resource kvCertificatesUserForAppGw 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(appGwMiPrincipalId) && !empty(kvResourceId)) {
+  scope: kv
+  name: guid(kv.id, appGwMiPrincipalId, roleIds.keyVaultCertificatesUser)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.keyVaultCertificatesUser)
+    principalId: appGwMiPrincipalId
     principalType: 'ServicePrincipal'
   }
 }
@@ -46,12 +80,11 @@ resource kvCryptoUserForShim 'Microsoft.Authorization/roleAssignments@2022-04-01
 // Scoped to Tier 3 RG; this assignment is conditional on Phase 5 re-deploy
 
 // Contributor role for Control Plane MI on the current resource group (when scoped to Tier 3 RG)
-// Role ID: b24988ac-6180-42a0-ab88-20f7382dd24c
 // Allows Control Plane to create and manage ACA apps and supporting resources in Tier 3
 resource tier3ContributorForControlPlane 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(controlPlaneMiPrincipalId)) {
-  name: guid(resourceGroup().id, controlPlaneMiPrincipalId, 'b24988ac-6180-42a0-ab88-20f7382dd24c')
+  name: guid(resourceGroup().id, controlPlaneMiPrincipalId, roleIds.contributor)
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.contributor)
     principalId: controlPlaneMiPrincipalId
     principalType: 'ServicePrincipal'
   }
@@ -64,6 +97,12 @@ output kvCryptoOfficerRoleAssignmentId string = !empty(controlPlaneMiPrincipalId
 
 @description('Key Vault Crypto User role assignment resource ID (if created)')
 output kvCryptoUserRoleAssignmentId string = !empty(shimMiPrincipalId) && !empty(kvResourceId) ? kvCryptoUserForShim.id : ''
+
+@description('Key Vault Secrets User role assignment for App Gateway (if created)')
+output kvSecretsUserRoleAssignmentId string = !empty(appGwMiPrincipalId) && !empty(kvResourceId) ? kvSecretsUserForAppGw.id : ''
+
+@description('Key Vault Certificates User role assignment for App Gateway (if created)')
+output kvCertificatesUserRoleAssignmentId string = !empty(appGwMiPrincipalId) && !empty(kvResourceId) ? kvCertificatesUserForAppGw.id : ''
 
 @description('Tier 3 Contributor role assignment resource ID (if created)')
 output tier3ContributorRoleAssignmentId string = !empty(controlPlaneMiPrincipalId) ? tier3ContributorForControlPlane.id : ''

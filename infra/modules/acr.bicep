@@ -10,6 +10,9 @@ param acrName string
 @description('Private endpoint subnet resource ID')
 param peSubnetId string
 
+@description('VNet resource ID for private DNS zone linking')
+param vnetId string
+
 @description('Resource tags applied to all resources')
 param tags object
 
@@ -74,8 +77,23 @@ resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneG
 }
 
 resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  // TODO: For sovereign/gov clouds, this should be dynamically determined
   name: 'privatelink.azurecr.io'
   location: 'global'
+  tags: tags
+}
+
+// VNet link for private DNS zone
+resource privateDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  parent: privateDnsZone
+  name: 'vnet-link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: vnetId
+    }
+  }
   tags: tags
 }
 

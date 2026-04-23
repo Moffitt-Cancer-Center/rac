@@ -14,6 +14,7 @@ param appGwSubnetId string
 param parentDomain string
 
 @description('TLS certificate Key Vault secret ID (full versioned secret URI)')
+@secure()
 param tlsCertKvSecretId string
 
 @description('App Gateway managed identity resource ID')

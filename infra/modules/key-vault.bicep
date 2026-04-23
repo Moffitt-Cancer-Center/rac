@@ -48,6 +48,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 }
 
 // Private DNS zone for Key Vault
+// TODO: For sovereign/gov clouds, this should be dynamically determined via environment().suffixes
 resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
   name: 'privatelink.vaultcore.azure.net'
   location: 'global'

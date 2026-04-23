@@ -73,7 +73,8 @@ param shimAppId string = ''
 @description('Control Plane ACA app resource ID for alerts (empty on first deploy; populate after Phase 2)')
 param controlPlaneAppId string = ''
 
-@description('Pipeline timeout in minutes (used to compute stuck-pipeline alert threshold)')
+@description('Pipeline timeout in minutes (used to compute stuck-pipeline alert threshold). Max 180 min due to Azure 360-min schema limit (2x multiplier for alert window).')
+@maxValue(180)
 param pipelineTimeoutMinutes int = 120
 
 @description('Key Vault purge protection (false for dev, true for staging/prod)')
@@ -187,6 +188,7 @@ module acr 'modules/acr.bicep' = {
     racEnv: racEnv
     acrName: acrName
     peSubnetId: network.outputs.peSubnetId
+    vnetId: network.outputs.vnetId
     tags: commonTags
   }
 }
@@ -263,6 +265,7 @@ module roleAssignmentsKv 'modules/role-assignments.bicep' = {
   params: {
     controlPlaneMiPrincipalId: managedIdentity.outputs.controlPlaneMiPrincipalId
     shimMiPrincipalId: managedIdentity.outputs.shimMiPrincipalId
+    appGwMiPrincipalId: managedIdentity.outputs.appGwMiPrincipalId
     kvResourceId: keyVault.outputs.kvId
   }
 }
