@@ -1,0 +1,68 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rac-control-plane"
+version = "1.0.0"
+description = "RAC Control Plane: FastAPI backend with Postgres + React frontend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.136",
+    "pydantic>=2.7",
+    "pydantic-settings",
+    "sqlalchemy>=2.0",
+    "alembic",
+    "asyncpg",
+    "uvicorn[standard]",
+    "gunicorn",
+    "fastapi-azure-auth",
+    "asgi-idempotency-header",
+    "edwh-uuid7",
+    "pyyaml",
+    "httpx",
+    "structlog",
+    "azure-identity",
+    "azure-keyvault-keys",
+    "azure-keyvault-secrets",
+    "azure-storage-blob",
+    "opencensus-ext-azure",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-grpc",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "testcontainers[postgres]",
+    "httpx",
+    "ruff",
+    "mypy",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "S"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_unreachable = true
+no_implicit_reexport = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--strict-markers"
