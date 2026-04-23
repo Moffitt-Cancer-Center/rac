@@ -1,0 +1,165 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "4880570899844040401"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region for all resources"
+      }
+    },
+    "racEnv": {
+      "type": "string",
+      "metadata": {
+        "description": "RAC deployment environment (dev, staging, prod)"
+      }
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Log Analytics workspace resource ID"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "metadata": {
+        "description": "Resource tags applied to all resources"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.EventHub/namespaces",
+      "apiVersion": "2024-01-01",
+      "name": "[format('evhns-rac-{0}', parameters('racEnv'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "sku": {
+        "name": "Standard",
+        "tier": "Standard",
+        "capacity": 1
+      },
+      "properties": {
+        "minimumTlsVersion": "1.2",
+        "publicNetworkAccess": "Enabled",
+        "zoneRedundant": false
+      }
+    },
+    {
+      "type": "Microsoft.EventHub/namespaces/eventhubs",
+      "apiVersion": "2024-01-01",
+      "name": "[format('{0}/{1}', format('evhns-rac-{0}', parameters('racEnv')), 'eh-rac-access-logs')]",
+      "properties": {
+        "messageRetentionInDays": 1,
+        "partitionCount": 1
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.EventHub/namespaces/eventhubs",
+      "apiVersion": "2024-01-01",
+      "name": "[format('{0}/{1}', format('evhns-rac-{0}', parameters('racEnv')), 'eh-rac-approval-events')]",
+      "properties": {
+        "messageRetentionInDays": 1,
+        "partitionCount": 1
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.EventHub/namespaces/authorizationRules",
+      "apiVersion": "2024-01-01",
+      "name": "[format('{0}/{1}', format('evhns-rac-{0}', parameters('racEnv')), 'rac-siem-listener')]",
+      "properties": {
+        "rights": [
+          "Listen"
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/dataExports",
+      "apiVersion": "2020-08-01",
+      "name": "[format('{0}/dataexport-accesslogs-{1}', last(split(parameters('logAnalyticsWorkspaceId'), '/')), parameters('racEnv'))]",
+      "properties": {
+        "destination": {
+          "resourceId": "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]",
+          "metaData": {
+            "eventHubName": "eh-rac-access-logs"
+          }
+        },
+        "tableNames": [
+          "RAC_AccessLog_CL"
+        ],
+        "enable": true
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces/eventhubs', format('evhns-rac-{0}', parameters('racEnv')), 'eh-rac-access-logs')]",
+        "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/dataExports",
+      "apiVersion": "2020-08-01",
+      "name": "[format('{0}/dataexport-approval-{1}', last(split(parameters('logAnalyticsWorkspaceId'), '/')), parameters('racEnv'))]",
+      "properties": {
+        "destination": {
+          "resourceId": "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]",
+          "metaData": {
+            "eventHubName": "eh-rac-approval-events"
+          }
+        },
+        "tableNames": [
+          "RAC_ApprovalEvent_CL"
+        ],
+        "enable": true
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces/eventhubs', format('evhns-rac-{0}', parameters('racEnv')), 'eh-rac-approval-events')]",
+        "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "eventHubNamespaceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Event Hub Namespace resource ID"
+      },
+      "value": "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]"
+    },
+    "accessLogsEventHubId": {
+      "type": "string",
+      "metadata": {
+        "description": "Access Logs Event Hub resource ID"
+      },
+      "value": "[resourceId('Microsoft.EventHub/namespaces/eventhubs', format('evhns-rac-{0}', parameters('racEnv')), 'eh-rac-access-logs')]"
+    },
+    "approvalEventsEventHubId": {
+      "type": "string",
+      "metadata": {
+        "description": "Approval Events Event Hub resource ID"
+      },
+      "value": "[resourceId('Microsoft.EventHub/namespaces/eventhubs', format('evhns-rac-{0}', parameters('racEnv')), 'eh-rac-approval-events')]"
+    },
+    "listenerConnectionStringSecretRef": {
+      "type": "string",
+      "metadata": {
+        "description": "Listener authorization rule connection string secret reference for Key Vault"
+      },
+      "value": "[format('eh-listener-connstring-{0}', parameters('racEnv'))]"
+    }
+  }
+}
