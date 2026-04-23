@@ -1,0 +1,91 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "8507450378847529908"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region for all resources"
+      }
+    },
+    "racEnv": {
+      "type": "string",
+      "metadata": {
+        "description": "RAC deployment environment (dev, staging, prod)"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "metadata": {
+        "description": "Resource tags applied to all resources"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-07-31-preview",
+      "name": "[format('id-rac-controlplane-{0}', parameters('racEnv'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]"
+    },
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-07-31-preview",
+      "name": "[format('id-rac-shim-{0}', parameters('racEnv'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]"
+    }
+  ],
+  "outputs": {
+    "controlPlaneMiResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Control Plane managed identity resource ID"
+      },
+      "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-controlplane-{0}', parameters('racEnv')))]"
+    },
+    "controlPlaneMiPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "Control Plane managed identity principal ID"
+      },
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-controlplane-{0}', parameters('racEnv'))), '2023-07-31-preview').principalId]"
+    },
+    "controlPlaneMiClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "Control Plane managed identity client ID"
+      },
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-controlplane-{0}', parameters('racEnv'))), '2023-07-31-preview').clientId]"
+    },
+    "shimMiResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Shim managed identity resource ID"
+      },
+      "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-shim-{0}', parameters('racEnv')))]"
+    },
+    "shimMiPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "Shim managed identity principal ID"
+      },
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-shim-{0}', parameters('racEnv'))), '2023-07-31-preview').principalId]"
+    },
+    "shimMiClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "Shim managed identity client ID"
+      },
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-shim-{0}', parameters('racEnv'))), '2023-07-31-preview').clientId]"
+    }
+  }
+}
