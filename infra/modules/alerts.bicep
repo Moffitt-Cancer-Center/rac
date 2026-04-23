@@ -1,0 +1,292 @@
+@description('Azure region for all resources')
+param location string
+
+@description('RAC deployment environment (dev, staging, prod)')
+param racEnv string
+
+@description('Email addresses for alert action group (comma-separated)')
+param actionGroupEmails array = []
+
+@description('Webhook URI for alert action group (optional)')
+param actionGroupWebhookUri string = ''
+
+@description('Shim ACA app resource ID (empty on first deploy)')
+param shimAppId string = ''
+
+@description('Control Plane ACA app resource ID (empty on first deploy)')
+param controlPlaneAppId string = ''
+
+@description('Postgres Flexible Server resource ID')
+param postgresServerId string
+
+@description('Key Vault resource ID')
+param kvId string
+
+@description('Log Analytics workspace resource ID')
+param logAnalyticsWorkspaceId string
+
+@description('Pipeline timeout in minutes (used for stuck-pipeline alert threshold)')
+param pipelineTimeoutMinutes int = 120
+
+@description('Resource tags applied to all resources')
+param tags object
+
+// Action Group
+resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
+  name: 'ag-rac-${racEnv}'
+  location: 'global'
+  tags: tags
+  properties: {
+    groupShortName: 'rac-${racEnv}'
+    enabled: true
+    emailReceivers: [
+      for (email, index) in actionGroupEmails: {
+        name: 'email-${index}'
+        emailAddress: email
+        useCommonAlertSchema: true
+      }
+    ]
+    webhookReceivers: !empty(actionGroupWebhookUri) ? [
+      {
+        name: 'webhook-receiver'
+        objectId: null
+        serviceUri: actionGroupWebhookUri
+        useCommonAlertSchema: true
+      }
+    ] : []
+  }
+}
+
+// Alert: Shim 5xx rate > 1% over 5 minutes
+resource alertShim5xx 'Microsoft.Insights/metricAlerts@2018-03-01' = if (!empty(shimAppId)) {
+  name: 'alert-shim-5xx-${racEnv}'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'Shim application 5xx error rate > 1% over 5 minutes'
+    enabled: true
+    severity: 1
+    scopes: [
+      shimAppId
+    ]
+    evaluationFrequency: 'PT1M'
+    windowSize: 'PT5M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          name: '5xx-rate'
+          metricName: 'Requests'
+          metricNamespace: 'Microsoft.App/containerApps'
+          operator: 'GreaterThan'
+          threshold: 1
+          timeAggregation: 'Total'
+          dimensions: [
+            {
+              name: 'statusCodeCategory'
+              operator: 'Include'
+              values: [
+                '5xx'
+              ]
+            }
+          ]
+        }
+        {
+          name: 'total-requests'
+          metricName: 'Requests'
+          metricNamespace: 'Microsoft.App/containerApps'
+          operator: 'GreaterThan'
+          threshold: 100
+          timeAggregation: 'Total'
+        }
+      ]
+    }
+    actions: [
+      {
+        actionGroupId: actionGroup.id
+        webHookProperties: {}
+      }
+    ]
+  }
+}
+
+// Alert: Control Plane 5xx rate > 1% over 5 minutes
+resource alertControlPlane5xx 'Microsoft.Insights/metricAlerts@2018-03-01' = if (!empty(controlPlaneAppId)) {
+  name: 'alert-controlplane-5xx-${racEnv}'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'Control Plane application 5xx error rate > 1% over 5 minutes'
+    enabled: true
+    severity: 1
+    scopes: [
+      controlPlaneAppId
+    ]
+    evaluationFrequency: 'PT1M'
+    windowSize: 'PT5M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          name: '5xx-rate'
+          metricName: 'Requests'
+          metricNamespace: 'Microsoft.App/containerApps'
+          operator: 'GreaterThan'
+          threshold: 1
+          timeAggregation: 'Total'
+          dimensions: [
+            {
+              name: 'statusCodeCategory'
+              operator: 'Include'
+              values: [
+                '5xx'
+              ]
+            }
+          ]
+        }
+        {
+          name: 'total-requests'
+          metricName: 'Requests'
+          metricNamespace: 'Microsoft.App/containerApps'
+          operator: 'GreaterThan'
+          threshold: 100
+          timeAggregation: 'Total'
+        }
+      ]
+    }
+    actions: [
+      {
+        actionGroupId: actionGroup.id
+        webHookProperties: {}
+      }
+    ]
+  }
+}
+
+// Alert: Postgres connection failures > 0 over 5 minutes
+resource alertPostgresConnectionFailures 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: 'alert-postgres-connection-failures-${racEnv}'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'Postgres connection failures > 0 over 5 minutes'
+    enabled: true
+    severity: 1
+    scopes: [
+      postgresServerId
+    ]
+    evaluationFrequency: 'PT1M'
+    windowSize: 'PT5M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          name: 'connection-failures'
+          metricName: 'connections_failed'
+          metricNamespace: 'Microsoft.DBforPostgreSQL/flexibleServers'
+          operator: 'GreaterThan'
+          threshold: 0
+          timeAggregation: 'Total'
+        }
+      ]
+    }
+    actions: [
+      {
+        actionGroupId: actionGroup.id
+        webHookProperties: {}
+      }
+    ]
+  }
+}
+
+// Alert: Key Vault access denied > 0 over 5 minutes
+resource alertKeyVaultAccessDenied 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: 'alert-keyvault-access-denied-${racEnv}'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'Key Vault access denied errors > 0 over 5 minutes'
+    enabled: true
+    severity: 1
+    scopes: [
+      kvId
+    ]
+    evaluationFrequency: 'PT1M'
+    windowSize: 'PT5M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          name: 'access-denied'
+          metricName: 'ServiceApiResult'
+          metricNamespace: 'Microsoft.KeyVault/vaults'
+          operator: 'GreaterThan'
+          threshold: 0
+          timeAggregation: 'Total'
+          dimensions: [
+            {
+              name: 'ResultType'
+              operator: 'Include'
+              values: [
+                'Forbidden'
+              ]
+            }
+          ]
+        }
+      ]
+    }
+    actions: [
+      {
+        actionGroupId: actionGroup.id
+        webHookProperties: {}
+      }
+    ]
+  }
+}
+
+// Alert: Pipeline workflow stuck (Log Analytics scheduled query)
+// Alert triggers when no terminal verdict callback observed within 2x pipeline timeout
+resource alertPipelineStuck 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-pipeline-stuck-${racEnv}'
+  location: location
+  tags: tags
+  properties: {
+    description: 'Pipeline workflow stuck > 2x timeout without terminal verdict'
+    enabled: true
+    severity: 2
+    scopes: [
+      logAnalyticsWorkspaceId
+    ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT${2 * pipelineTimeoutMinutes}M'
+    criteria: {
+      allOf: [
+        {
+          query: '''
+          // Placeholder query: identifies pipeline submissions without terminal verdict
+          // Phase 3 will provide actual structured log query
+          RAC_PipelineLog_CL
+          | where event_type == "pipeline_started"
+          | where not (event_type == "pipeline_verdict")
+          | summarize count()
+          '''
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    actions: [
+      {
+        actionGroupId: actionGroup.id
+      }
+    ]
+  }
+}
+
+@description('Action Group resource ID')
+output actionGroupId string = actionGroup.id
