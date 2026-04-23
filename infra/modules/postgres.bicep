@@ -57,10 +57,6 @@ resource postgresServer 'Microsoft.DBforPostgreSQL/flexibleServers@2023-06-01-pr
     network: {
       delegatedSubnetResourceId: pgSubnetId
     }
-    authentication: {
-      activeDirectoryAuth: 'Enabled'
-      passwordAuth: 'Enabled'
-    }
   }
 }
 
