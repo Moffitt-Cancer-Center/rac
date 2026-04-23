@@ -1,4 +1,5 @@
 # pattern: Functional Core
+# ruff: noqa: E501  -- transition-table values span >100 chars; keeping one-line-per-transition preserves readability
 """Submission Finite State Machine.
 
 Pure functions for validating and executing state transitions.

@@ -6,7 +6,7 @@ All database access for submission queries goes through this module.
 
 from uuid import UUID
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from rac_control_plane.auth.principal import Principal
@@ -52,33 +52,20 @@ async def list_submissions(
     Returns:
         Tuple of (submission_list, total_count)
     """
-    # Build base query
     stmt = select(Submission)
+    count_stmt = select(func.count()).select_from(Submission)
 
-    # Auth filtering: only show submissions where principal is authorized
-    # For now, show all submissions (auth will be checked by the route handler)
-    # TODO: Implement proper authorization checks in route handler
-
-    # Status filter
     if status_filter:
         stmt = stmt.where(Submission.status == status_filter)
-
-    # Get total count
-    count_stmt = select(Submission)
-    if status_filter:
         count_stmt = count_stmt.where(Submission.status == status_filter)
-    total = await session.scalar(
-        select(Submission.__table__.__len__()).select_from(count_stmt.subquery())
-    )
-    if total is None:
-        total = len(await session.scalars(count_stmt))
 
-    # Pagination
+    total = await session.scalar(count_stmt) or 0
+
     offset = (page - 1) * page_size
     stmt = stmt.order_by(desc(Submission.created_at)).offset(offset).limit(page_size)
 
-    submissions = await session.scalars(stmt)
-    return list(submissions), total
+    result = await session.scalars(stmt)
+    return list(result), total
 
 
 async def get_existing_slugs(session: AsyncSession) -> set[str]:
