@@ -1,0 +1,80 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "racEnv": {
+      "value": "staging"
+    },
+    "parentDomain": {
+      "value": "rac-staging.example.org"
+    },
+    "location": {
+      "value": "eastus"
+    },
+    "idpTenantId": {
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    "acrName": {
+      "value": "racstagingacr001"
+    },
+    "storageAccountName": {
+      "value": "racstagingst001"
+    },
+    "pgServerName": {
+      "value": "rac-staging-pg"
+    },
+    "pgAdminPassword": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/<subscription-id>/resourceGroups/<bootstrap-rg-name>/providers/Microsoft.KeyVault/vaults/<bootstrap-kv-name>"
+        },
+        "secretName": "pg-admin-password-staging"
+      }
+    },
+    "appGwTlsCertKvSecretId": {
+      "value": "https://<bootstrap-kv-name>.vault.azure.net/secrets/appgw-cert-staging/<version>"
+    },
+    "controlPlaneIdentityPrincipalId": {
+      "value": ""
+    },
+    "vnetOctet": {
+      "value": 20
+    },
+    "pgSkuName": {
+      "value": "Standard_D2s_v3"
+    },
+    "pgSkuTier": {
+      "value": "GeneralPurpose"
+    },
+    "pgStorageSizeGB": {
+      "value": 64
+    },
+    "pgHaMode": {
+      "value": "SameZone"
+    },
+    "pgBackupRetentionDays": {
+      "value": 14
+    },
+    "acaZoneRedundant": {
+      "value": true
+    },
+    "acaProfileSku": {
+      "value": "Consumption"
+    },
+    "actionGroupEmails": {
+      "value": []
+    },
+    "actionGroupWebhookUri": {
+      "value": ""
+    },
+    "shimAppId": {
+      "value": ""
+    },
+    "controlPlaneAppId": {
+      "value": ""
+    },
+    "pipelineTimeoutMinutes": {
+      "value": 120
+    }
+  }
+}

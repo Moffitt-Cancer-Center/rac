@@ -1,0 +1,80 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "racEnv": {
+      "value": "prod"
+    },
+    "parentDomain": {
+      "value": "rac.example.org"
+    },
+    "location": {
+      "value": "eastus"
+    },
+    "idpTenantId": {
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    "acrName": {
+      "value": "racprodacr001"
+    },
+    "storageAccountName": {
+      "value": "racprodst001"
+    },
+    "pgServerName": {
+      "value": "rac-prod-pg"
+    },
+    "pgAdminPassword": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/<subscription-id>/resourceGroups/<bootstrap-rg-name>/providers/Microsoft.KeyVault/vaults/<bootstrap-kv-name>"
+        },
+        "secretName": "pg-admin-password-prod"
+      }
+    },
+    "appGwTlsCertKvSecretId": {
+      "value": "https://<bootstrap-kv-name>.vault.azure.net/secrets/appgw-cert-prod/<version>"
+    },
+    "controlPlaneIdentityPrincipalId": {
+      "value": ""
+    },
+    "vnetOctet": {
+      "value": 30
+    },
+    "pgSkuName": {
+      "value": "Standard_D4s_v3"
+    },
+    "pgSkuTier": {
+      "value": "GeneralPurpose"
+    },
+    "pgStorageSizeGB": {
+      "value": 128
+    },
+    "pgHaMode": {
+      "value": "ZoneRedundant"
+    },
+    "pgBackupRetentionDays": {
+      "value": 35
+    },
+    "acaZoneRedundant": {
+      "value": true
+    },
+    "acaProfileSku": {
+      "value": "D4"
+    },
+    "actionGroupEmails": {
+      "value": []
+    },
+    "actionGroupWebhookUri": {
+      "value": ""
+    },
+    "shimAppId": {
+      "value": ""
+    },
+    "controlPlaneAppId": {
+      "value": ""
+    },
+    "pipelineTimeoutMinutes": {
+      "value": 120
+    }
+  }
+}

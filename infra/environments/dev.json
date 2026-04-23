@@ -1,0 +1,86 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "racEnv": {
+      "value": "dev"
+    },
+    "parentDomain": {
+      "value": "rac-dev.example.org"
+    },
+    "location": {
+      "value": "eastus"
+    },
+    "idpTenantId": {
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    "acrName": {
+      "value": "racdevacr001"
+    },
+    "storageAccountName": {
+      "value": "racdevst001"
+    },
+    "pgServerName": {
+      "value": "rac-dev-pg"
+    },
+    "pgAdminPassword": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/<subscription-id>/resourceGroups/<bootstrap-rg-name>/providers/Microsoft.KeyVault/vaults/<bootstrap-kv-name>"
+        },
+        "secretName": "pg-admin-password-dev"
+      }
+    },
+    "appGwTlsCertKvSecretId": {
+      "value": "https://<bootstrap-kv-name>.vault.azure.net/secrets/appgw-cert-dev/<version>"
+    },
+    "controlPlaneIdentityPrincipalId": {
+      "value": ""
+    },
+    "vnetOctet": {
+      "value": 10
+    },
+    "pgSkuName": {
+      "value": "Standard_B2s"
+    },
+    "pgSkuTier": {
+      "value": "Burstable"
+    },
+    "pgStorageSizeGB": {
+      "value": 32
+    },
+    "pgHaMode": {
+      "value": "Disabled"
+    },
+    "pgBackupRetentionDays": {
+      "value": 7
+    },
+    "acaZoneRedundant": {
+      "value": false
+    },
+    "acaProfileSku": {
+      "value": "Consumption"
+    },
+    "actionGroupEmails": {
+      "value": []
+    },
+    "actionGroupWebhookUri": {
+      "value": ""
+    },
+    "shimAppId": {
+      "value": ""
+    },
+    "controlPlaneAppId": {
+      "value": ""
+    },
+    "pipelineTimeoutMinutes": {
+      "value": 120
+    },
+    "kvEnablePurgeProtection": {
+      "value": false
+    },
+    "kvSoftDeleteRetentionInDays": {
+      "value": 7
+    }
+  }
+}
