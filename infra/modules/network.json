@@ -1,0 +1,140 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "1223284419374934961"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region for all resources"
+      }
+    },
+    "racEnv": {
+      "type": "string",
+      "metadata": {
+        "description": "RAC deployment environment (dev, staging, prod)"
+      }
+    },
+    "vnetOctet": {
+      "type": "int",
+      "metadata": {
+        "description": "VNet third octet (10.X.0.0/16). Dev: 10, Staging: 20, Prod: 30"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "metadata": {
+        "description": "Resource tags applied to all resources"
+      }
+    }
+  },
+  "variables": {
+    "vnetName": "[format('vnet-rac-{0}', parameters('racEnv'))]",
+    "vnetAddressSpace": "[format('10.{0}.0.0/16', parameters('vnetOctet'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2024-05-01",
+      "name": "[variables('vnetName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[variables('vnetAddressSpace')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "snet-aca",
+            "properties": {
+              "addressPrefix": "[format('10.{0}.0.0/21', parameters('vnetOctet'))]",
+              "delegations": [
+                {
+                  "name": "aca-delegation",
+                  "properties": {
+                    "serviceName": "Microsoft.App/environments"
+                  }
+                }
+              ],
+              "serviceEndpoints": [],
+              "privateLinkServiceNetworkPolicies": "Enabled",
+              "privateEndpointNetworkPolicies": "Enabled"
+            }
+          },
+          {
+            "name": "snet-appgw",
+            "properties": {
+              "addressPrefix": "[format('10.{0}.8.0/24', parameters('vnetOctet'))]",
+              "serviceEndpoints": [],
+              "privateLinkServiceNetworkPolicies": "Enabled",
+              "privateEndpointNetworkPolicies": "Enabled"
+            }
+          },
+          {
+            "name": "snet-pe",
+            "properties": {
+              "addressPrefix": "[format('10.{0}.9.0/24', parameters('vnetOctet'))]",
+              "serviceEndpoints": [],
+              "privateLinkServiceNetworkPolicies": "Enabled",
+              "privateEndpointNetworkPolicies": "Disabled"
+            }
+          },
+          {
+            "name": "snet-pg",
+            "properties": {
+              "addressPrefix": "[format('10.{0}.10.0/24', parameters('vnetOctet'))]",
+              "serviceEndpoints": [],
+              "privateLinkServiceNetworkPolicies": "Enabled",
+              "privateEndpointNetworkPolicies": "Enabled"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "outputs": {
+    "vnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "Virtual Network resource ID"
+      },
+      "value": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+    },
+    "acaSubnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "ACA subnet resource ID"
+      },
+      "value": "[format('{0}/subnets/snet-aca', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')))]"
+    },
+    "appGwSubnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "App Gateway subnet resource ID"
+      },
+      "value": "[format('{0}/subnets/snet-appgw', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')))]"
+    },
+    "peSubnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "Private Endpoint subnet resource ID"
+      },
+      "value": "[format('{0}/subnets/snet-pe', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')))]"
+    },
+    "pgSubnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "Postgres private endpoint subnet resource ID"
+      },
+      "value": "[format('{0}/subnets/snet-pg', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')))]"
+    }
+  }
+}

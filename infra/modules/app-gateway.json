@@ -1,0 +1,249 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "12350808717761113628"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region for all resources"
+      }
+    },
+    "racEnv": {
+      "type": "string",
+      "metadata": {
+        "description": "Deployment environment: dev | staging | prod"
+      }
+    },
+    "appGwName": {
+      "type": "string",
+      "metadata": {
+        "description": "Application Gateway name"
+      }
+    },
+    "appGwSubnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "App Gateway subnet ID"
+      }
+    },
+    "parentDomain": {
+      "type": "string",
+      "metadata": {
+        "description": "Parent DNS domain, e.g., rac.moffitt.org"
+      }
+    },
+    "tlsCertKvSecretId": {
+      "type": "securestring",
+      "metadata": {
+        "description": "TLS certificate Key Vault secret ID (full versioned secret URI)"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "metadata": {
+        "description": "Resource tags"
+      }
+    }
+  },
+  "variables": {
+    "appGwId": "[resourceId('Microsoft.Network/applicationGateways', parameters('appGwName'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2023-11-01",
+      "name": "[format('pip-appgw-{0}', parameters('racEnv'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "sku": {
+        "name": "Standard",
+        "tier": "Regional"
+      },
+      "zones": [
+        "1",
+        "2",
+        "3"
+      ],
+      "properties": {
+        "publicIPAllocationMethod": "Static",
+        "publicIPAddressVersion": "IPv4",
+        "idleTimeoutInMinutes": 4
+      }
+    },
+    {
+      "type": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies",
+      "apiVersion": "2023-11-01",
+      "name": "[format('waf-appgw-{0}', parameters('racEnv'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "policySettings": {
+          "fileUploadLimitInMb": 100,
+          "state": "Enabled",
+          "mode": "Prevention",
+          "requestBodyCheck": true,
+          "maxRequestBodySizeInKb": 128
+        },
+        "managedRules": {
+          "managedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/applicationGateways",
+      "apiVersion": "2023-11-01",
+      "name": "[parameters('appGwName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "sku": {
+          "name": "WAF_v2",
+          "tier": "WAF_v2",
+          "capacity": 2
+        },
+        "gatewayIPConfigurations": [
+          {
+            "name": "appGatewayIpConfig",
+            "properties": {
+              "subnet": {
+                "id": "[parameters('appGwSubnetId')]"
+              }
+            }
+          }
+        ],
+        "frontendIPConfigurations": [
+          {
+            "name": "appGatewayFrontendIP",
+            "properties": {
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv')))]"
+              }
+            }
+          }
+        ],
+        "frontendPorts": [
+          {
+            "name": "appGatewayFrontendPort443",
+            "properties": {
+              "port": 443
+            }
+          }
+        ],
+        "backendAddressPools": [
+          {
+            "name": "appGatewayBackendPool",
+            "properties": {
+              "backendAddresses": [
+                {
+                  "fqdn": "shim.internal.eastus.azurecontainerapps.io"
+                }
+              ]
+            }
+          }
+        ],
+        "backendHttpSettingsCollection": [
+          {
+            "name": "appGatewayBackendHttpSettings",
+            "properties": {
+              "port": 443,
+              "protocol": "Https",
+              "cookieBasedAffinity": "Disabled",
+              "requestTimeout": 120,
+              "pickHostNameFromBackendAddress": true,
+              "probeEnabled": false
+            }
+          }
+        ],
+        "httpListeners": [
+          {
+            "name": "appGatewayHttpsListener",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[format('{0}/frontendIPConfigurations/appGatewayFrontendIP', variables('appGwId'))]"
+              },
+              "frontendPort": {
+                "id": "[format('{0}/frontendPorts/appGatewayFrontendPort443', variables('appGwId'))]"
+              },
+              "protocol": "Https",
+              "sslCertificate": {
+                "id": "[format('{0}/sslCertificates/appGatewaySslCert', variables('appGwId'))]"
+              },
+              "hostName": "[format('*.{0}', parameters('parentDomain'))]",
+              "hostNames": [
+                "[format('*.{0}', parameters('parentDomain'))]"
+              ],
+              "requireServerNameIndication": true
+            }
+          }
+        ],
+        "requestRoutingRules": [
+          {
+            "name": "appGatewayRoutingRule",
+            "properties": {
+              "ruleType": "Basic",
+              "httpListener": {
+                "id": "[format('{0}/httpListeners/appGatewayHttpsListener', variables('appGwId'))]"
+              },
+              "backendAddressPool": {
+                "id": "[format('{0}/backendAddressPools/appGatewayBackendPool', variables('appGwId'))]"
+              },
+              "backendHttpSettings": {
+                "id": "[format('{0}/backendHttpSettings/appGatewayBackendHttpSettings', variables('appGwId'))]"
+              }
+            }
+          }
+        ],
+        "sslCertificates": [
+          {
+            "name": "appGatewaySslCert",
+            "properties": {
+              "keyVaultSecretId": "[parameters('tlsCertKvSecretId')]"
+            }
+          }
+        ],
+        "firewallPolicy": {
+          "id": "[resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', format('waf-appgw-{0}', parameters('racEnv')))]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv')))]",
+        "[resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', format('waf-appgw-{0}', parameters('racEnv')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "appGatewayId": {
+      "type": "string",
+      "metadata": {
+        "description": "Application Gateway resource ID"
+      },
+      "value": "[resourceId('Microsoft.Network/applicationGateways', parameters('appGwName'))]"
+    },
+    "appGatewayPublicFqdn": {
+      "type": "string",
+      "metadata": {
+        "description": "Application Gateway public IP FQDN"
+      },
+      "value": "[if(and(not(equals(reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings, null())), not(equals(reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings.fqdn, null()))), reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings.fqdn, reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').ipAddress)]"
+    },
+    "appGatewayPublicIp": {
+      "type": "string",
+      "metadata": {
+        "description": "Application Gateway public IP address"
+      },
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').ipAddress]"
+    }
+  }
+}

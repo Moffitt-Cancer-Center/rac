@@ -1,0 +1,145 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "1377463486938376506"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region for all resources"
+      }
+    },
+    "racEnv": {
+      "type": "string",
+      "metadata": {
+        "description": "RAC deployment environment (dev, staging, prod)"
+      }
+    },
+    "acrName": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure Container Registry name (globally unique, max 50 chars, alphanumeric)"
+      }
+    },
+    "peSubnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "Private endpoint subnet resource ID"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "metadata": {
+        "description": "Resource tags applied to all resources"
+      }
+    }
+  },
+  "variables": {
+    "acrNameNormalized": "[toLower(parameters('acrName'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ContainerRegistry/registries",
+      "apiVersion": "2023-11-01-preview",
+      "name": "[variables('acrNameNormalized')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "sku": {
+        "name": "Premium"
+      },
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "adminUserEnabled": false,
+        "publicNetworkAccess": "Disabled",
+        "policies": {
+          "quarantinePolicy": {
+            "status": "enabled"
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints",
+      "apiVersion": "2023-11-01",
+      "name": "[format('pe-acr-{0}', parameters('racEnv'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "subnet": {
+          "id": "[parameters('peSubnetId')]"
+        },
+        "privateLinkServiceConnections": [
+          {
+            "name": "acr-connection",
+            "properties": {
+              "privateLinkServiceId": "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized'))]",
+              "groupIds": [
+                "registry"
+              ]
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+      "apiVersion": "2023-11-01",
+      "name": "[format('{0}/{1}', format('pe-acr-{0}', parameters('racEnv')), 'acr-zone-group')]",
+      "properties": {
+        "privateDnsZoneConfigs": [
+          {
+            "name": "acr-privatelink-zone",
+            "properties": {
+              "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.azurecr.io')]"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.azurecr.io')]",
+        "[resourceId('Microsoft.Network/privateEndpoints', format('pe-acr-{0}', parameters('racEnv')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones",
+      "apiVersion": "2020-06-01",
+      "name": "privatelink.azurecr.io",
+      "location": "global",
+      "tags": "[parameters('tags')]"
+    }
+  ],
+  "outputs": {
+    "acrId": {
+      "type": "string",
+      "metadata": {
+        "description": "Container Registry resource ID"
+      },
+      "value": "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized'))]"
+    },
+    "acrLoginServer": {
+      "type": "string",
+      "metadata": {
+        "description": "Container Registry login server FQDN"
+      },
+      "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized')), '2023-11-01-preview').loginServer]"
+    },
+    "acrResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Container Registry resource ID (alias for acrId)"
+      },
+      "value": "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized'))]"
+    }
+  }
+}

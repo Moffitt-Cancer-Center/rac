@@ -1,0 +1,138 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "4594676212111844399"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region for all resources"
+      }
+    },
+    "racEnv": {
+      "type": "string",
+      "metadata": {
+        "description": "RAC deployment environment (dev, staging, prod)"
+      }
+    },
+    "serverName": {
+      "type": "string",
+      "metadata": {
+        "description": "Postgres Flexible Server name"
+      }
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Postgres administrator login password (must come from Key Vault reference)"
+      }
+    },
+    "skuName": {
+      "type": "string",
+      "metadata": {
+        "description": "Postgres SKU name (e.g., Standard_B2s, Standard_D2s_v3)"
+      }
+    },
+    "skuTier": {
+      "type": "string",
+      "metadata": {
+        "description": "Postgres SKU tier (e.g., Burstable, GeneralPurpose)"
+      }
+    },
+    "storageSizeGB": {
+      "type": "int",
+      "metadata": {
+        "description": "Storage size in GB"
+      }
+    },
+    "haMode": {
+      "type": "string",
+      "metadata": {
+        "description": "High Availability mode (Disabled, SameZone, ZoneRedundant)"
+      }
+    },
+    "backupRetentionDays": {
+      "type": "int",
+      "metadata": {
+        "description": "Backup retention days"
+      }
+    },
+    "pgSubnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "Postgres private endpoint subnet resource ID"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "metadata": {
+        "description": "Resource tags applied to all resources"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers",
+      "apiVersion": "2023-06-01-preview",
+      "name": "[parameters('serverName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "sku": {
+        "name": "[parameters('skuName')]",
+        "tier": "[parameters('skuTier')]"
+      },
+      "properties": {
+        "version": "16",
+        "administratorLogin": "rac_admin",
+        "administratorLoginPassword": "[parameters('adminPassword')]",
+        "storage": {
+          "storageSizeGB": "[parameters('storageSizeGB')]"
+        },
+        "backup": {
+          "backupRetentionDays": "[parameters('backupRetentionDays')]",
+          "geoRedundantBackup": "Enabled"
+        },
+        "highAvailability": {
+          "mode": "[parameters('haMode')]"
+        },
+        "network": {
+          "delegatedSubnetResourceId": "[parameters('pgSubnetId')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers/configurations",
+      "apiVersion": "2023-06-01-preview",
+      "name": "[format('{0}/{1}', parameters('serverName'), 'azure.extensions')]",
+      "properties": {
+        "value": "pg_uuidv7",
+        "source": "user-override"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "serverId": {
+      "type": "string",
+      "metadata": {
+        "description": "Postgres server resource ID"
+      },
+      "value": "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
+    },
+    "serverFqdn": {
+      "type": "string",
+      "metadata": {
+        "description": "Postgres server FQDN"
+      },
+      "value": "[reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName')), '2023-06-01-preview').fullyQualifiedDomainName]"
+    }
+  }
+}

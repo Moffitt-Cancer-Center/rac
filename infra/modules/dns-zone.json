@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "2327358551888314814"
+    }
+  },
+  "parameters": {
+    "parentDomain": {
+      "type": "string",
+      "metadata": {
+        "description": "Parent DNS domain, e.g., rac.moffitt.org"
+      }
+    },
+    "controlPlaneIdentityPrincipalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Control Plane managed identity principal ID (empty on first deploy; populated in Phase 5 Task 1 re-deploy)"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "metadata": {
+        "description": "Resource tags"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/dnsZones",
+      "apiVersion": "2018-05-01",
+      "name": "[parameters('parentDomain')]",
+      "location": "global",
+      "tags": "[parameters('tags')]"
+    },
+    {
+      "condition": "[not(empty(parameters('controlPlaneIdentityPrincipalId')))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Network/dnsZones', parameters('parentDomain'))]",
+      "name": "[guid(resourceId('Microsoft.Network/dnsZones', parameters('parentDomain')), parameters('controlPlaneIdentityPrincipalId'), 'befefa01-2a29-4197-83a8-272ff33ce314')]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'befefa01-2a29-4197-83a8-272ff33ce314')]",
+        "principalId": "[parameters('controlPlaneIdentityPrincipalId')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/dnsZones', parameters('parentDomain'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "zoneId": {
+      "type": "string",
+      "metadata": {
+        "description": "DNS Zone resource ID"
+      },
+      "value": "[resourceId('Microsoft.Network/dnsZones', parameters('parentDomain'))]"
+    },
+    "zoneNameServers": {
+      "type": "array",
+      "metadata": {
+        "description": "DNS Zone name servers"
+      },
+      "value": "[reference(resourceId('Microsoft.Network/dnsZones', parameters('parentDomain')), '2018-05-01').nameServers]"
+    }
+  }
+}

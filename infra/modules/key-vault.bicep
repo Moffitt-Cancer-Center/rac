@@ -16,6 +16,14 @@ param peSubnetId string
 @description('Resource tags applied to all resources')
 param tags object
 
+@description('Purge protection — set false only for dev to allow cleanup')
+param enablePurgeProtection bool = true
+
+@description('Soft-delete retention in days (7-90)')
+@minValue(7)
+@maxValue(90)
+param softDeleteRetentionInDays int = 90
+
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: kvName
   location: location
@@ -29,8 +37,8 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     accessPolicies: []
     enableRbacAuthorization: true
     enableSoftDelete: true
-    softDeleteRetentionInDays: 90
-    enablePurgeProtection: true
+    softDeleteRetentionInDays: softDeleteRetentionInDays
+    enablePurgeProtection: enablePurgeProtection
     publicNetworkAccess: 'Disabled'
     networkAcls: {
       defaultAction: 'Deny'
