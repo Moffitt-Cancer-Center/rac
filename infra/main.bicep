@@ -257,6 +257,30 @@ module managedIdentity 'modules/managed-identity.bicep' = {
   }
 }
 
+// ========== ROLE ASSIGNMENTS ==========
+// Module invocation 1: scoped to platform RG for Key Vault role assignments
+module roleAssignmentsKv 'modules/role-assignments.bicep' = {
+  scope: rg
+  name: 'deploy-roleassignments-kv'
+  params: {
+    controlPlaneMiPrincipalId: managedIdentity.outputs.controlPlaneMiPrincipalId
+    shimMiPrincipalId: managedIdentity.outputs.shimMiPrincipalId
+    kvResourceId: keyVault.outputs.kvId
+  }
+}
+
+// Module invocation 2: scoped to Tier 3 RG for Contributor role assignment
+// (Phase 5 conditional: only assigns when Control Plane identity is available)
+module roleAssignmentsTier3 'modules/role-assignments.bicep' = {
+  scope: rgTier3
+  name: 'deploy-roleassignments-tier3'
+  params: {
+    controlPlaneMiPrincipalId: managedIdentity.outputs.controlPlaneMiPrincipalId
+    shimMiPrincipalId: ''
+    kvResourceId: ''
+  }
+}
+
 module alerts 'modules/alerts.bicep' = {
   scope: rg
   name: 'deploy-alerts'
