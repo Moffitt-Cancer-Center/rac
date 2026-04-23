@@ -1,0 +1,152 @@
+# Infrastructure Deployment Workflow
+#
+# This workflow deploys RAC infrastructure across dev, staging, and prod environments.
+# It enforces human-gated promotion via GitHub Environments (staging and prod require approval).
+#
+# ## GitHub Environment Setup Required
+#
+# Before running this workflow, configure three GitHub Environments in repo Settings:
+#
+# ### Environment: dev
+# - Secrets:
+#   - AZURE_CLIENT_ID: App registration client ID for GHA Infra Deploy
+#   - AZURE_TENANT_ID: Entra tenant ID (same across all environments)
+#   - AZURE_SUBSCRIPTION_ID_DEV: Azure subscription ID for dev
+# - Variables:
+#   - AZURE_LOCATION: Azure region (e.g., eastus)
+# - Deployment branches: none (allow all)
+# - Required reviewers: none (dev is auto-deployed)
+#
+# ### Environment: staging
+# - Secrets:
+#   - AZURE_CLIENT_ID: (same as dev)
+#   - AZURE_TENANT_ID: (same as dev)
+#   - AZURE_SUBSCRIPTION_ID_STAGING: Azure subscription ID for staging
+# - Variables:
+#   - AZURE_LOCATION: Azure region
+# - Deployment branches: main only
+# - Required reviewers: enabled (1-2 team members with deploy authority)
+#
+# ### Environment: prod
+# - Secrets:
+#   - AZURE_CLIENT_ID: (same as dev)
+#   - AZURE_TENANT_ID: (same as dev)
+#   - AZURE_SUBSCRIPTION_ID_PROD: Azure subscription ID for prod
+# - Variables:
+#   - AZURE_LOCATION: Azure region
+# - Deployment branches: main only
+# - Required reviewers: enabled (2+ team members with deploy authority)
+#
+# ## Federated Identity Setup
+#
+# The GHA Infra Deploy app registration must have federated credentials:
+# - repo:<org>/rac:environment:dev
+# - repo:<org>/rac:environment:staging
+# - repo:<org>/rac:environment:prod
+#
+# See docs/runbooks/bootstrap.md for complete setup instructions.
+
+name: infra-deploy
+
+on:
+  push:
+    branches: [main]
+    paths: ['infra/**']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        type: choice
+        options: [dev, staging, prod]
+        default: dev
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  whatif-dev:
+    name: What-if (dev)
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }}
+
+      - name: What-if
+        run: |
+          az deployment sub what-if \
+            --location ${{ vars.AZURE_LOCATION }} \
+            --template-file infra/main.bicep \
+            --parameters infra/environments/dev.bicepparam
+
+  deploy-dev:
+    name: Deploy (dev)
+    needs: whatif-dev
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }}
+
+      - name: Deploy
+        run: |
+          az deployment sub create \
+            --name rac-dev-${{ github.run_id }} \
+            --location ${{ vars.AZURE_LOCATION }} \
+            --template-file infra/main.bicep \
+            --parameters infra/environments/dev.bicepparam
+
+  deploy-staging:
+    name: Deploy (staging)
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_STAGING }}
+
+      - name: Deploy
+        run: |
+          az deployment sub create \
+            --name rac-staging-${{ github.run_id }} \
+            --location ${{ vars.AZURE_LOCATION }} \
+            --template-file infra/main.bicep \
+            --parameters infra/environments/staging.bicepparam
+
+  deploy-prod:
+    name: Deploy (prod)
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
+
+      - name: Deploy
+        run: |
+          az deployment sub create \
+            --name rac-prod-${{ github.run_id }} \
+            --location ${{ vars.AZURE_LOCATION }} \
+            --template-file infra/main.bicep \
+            --parameters infra/environments/prod.bicepparam
