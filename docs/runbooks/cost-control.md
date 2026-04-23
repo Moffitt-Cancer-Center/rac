@@ -32,7 +32,7 @@ A dev environment running idle (no traffic) still incurs these charges. This run
 | Storage (LRS, test data only) | ~$1-5 | Minimal; raw storage is cheap, egress is not |
 | ACA Managed Environment | ~$0 | Infrastructure is free; consumption billed per replica-minute |
 | Shim + Control Plane ACA apps (Consumption, 2 replicas each during dev) | ~$10-50 | Varies; light traffic only |
-| **Rough floor (idle, no traffic)** | **~$1,200** | Running 24/7. **Spin down immediately after testing.** |
+| **Rough floor (idle, no traffic)** | **~$1,300–$1,400** | Running 24/7. **Spin down immediately after testing.** |
 
 **Action items:**
 - ACR Premium is the largest single cost at ~$650/month; this is flagged for Phase 2 review (may switch to Premium only in prod).

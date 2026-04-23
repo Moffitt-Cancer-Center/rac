@@ -171,10 +171,10 @@ for ENV in dev staging prod; do
 done
 
 # Grant GHA deploy principal access to this vault
-az keyvault set-policy \
-  --name kv-rac-bootstrap-001 \
-  --object-id <SERVICE_PRINCIPAL_OBJECT_ID> \
-  --secret-permissions get list
+az role assignment create \
+  --role 'Key Vault Secrets User' \
+  --assignee <SERVICE_PRINCIPAL_OBJECT_ID> \
+  --scope /subscriptions/$(az account show --query id -o tsv)/resourceGroups/rg-rac-bootstrap/providers/Microsoft.KeyVault/vaults/kv-rac-bootstrap-001
 ```
 
 ## 5. DNS Delegation
@@ -205,7 +205,24 @@ az network dns zone show \
 nslookup -type=NS rac.example.org
 ```
 
-## 6. GitHub Environments and Secrets
+## 6. GitHub Environments, Secrets, and Deploy Credentials
+
+### GitHub Secrets Setup
+
+In the GitHub repo Settings → Secrets and variables → Actions, create the following secrets (repository-level, accessible to all workflows):
+
+- `RAC_PG_ADMIN_PASSWORD`: The Postgres admin password from bootstrap vault (see step 4)
+- `RAC_APPGW_TLS_CERT_KV_SECRET_ID`: The full versioned Key Vault secret URI for the App Gateway TLS certificate
+
+Example:
+```
+RAC_PG_ADMIN_PASSWORD = "abc123...xyz" (from kv-rac-bootstrap-001 pg-admin-password-dev)
+RAC_APPGW_TLS_CERT_KV_SECRET_ID = "https://kv-rac-bootstrap-001.vault.azure.net/secrets/appgw-cert-dev/abc123..."
+```
+
+The infra-deploy workflow will inject these as environment variables during deployment, which are read by the bicepparam files via `readEnvironmentVariable()`.
+
+### GitHub Environments
 
 In the GitHub repo Settings → Environments, create three environments and configure secrets/variables.
 
@@ -241,6 +258,11 @@ In the GitHub repo Settings → Environments, create three environments and conf
   - `AZURE_SUBSCRIPTION_ID_PROD`: Prod subscription ID
 - **Variables:**
   - `AZURE_LOCATION`: eastus
+- **Secrets:**
+  - `RAC_PG_ADMIN_PASSWORD`: (same as repository secret)
+  - `RAC_APPGW_TLS_CERT_KV_SECRET_ID`: (same as repository secret)
+
+(These secrets override the repository-level ones for prod deployment if tighter control is needed.)
 
 ## 7. First Deploy
 
@@ -279,26 +301,50 @@ KV_URI=$(az deployment sub show \
 echo "Key Vault: $KV_URI"
 ```
 
+### Front Door Custom Domain Validation
+
+Front Door custom domains require DNS TXT record validation. This is performed by Azure automatically.
+
+1. After infra deploy completes, the Front Door custom domain is in `ValidationTokenNotFound` state.
+2. Query the validation token:
+
+```bash
+az afd custom-domain show \
+  --profile-name afd-rac-dev \
+  --custom-domain-name rac-dev-wildcard \
+  --resource-group rg-rac-dev \
+  --query "validationProperties.validationToken" -o tsv
+```
+
+3. Add a TXT record to your DNS zone (in Azure DNS or at your registrar):
+
+```
+_dnsauth.rac-dev.example.org  TXT  <validation-token-from-step-2>
+```
+
+4. Wait for validation (typically 5-15 minutes). Re-query the custom domain state:
+
+```bash
+az afd custom-domain show \
+  --profile-name afd-rac-dev \
+  --custom-domain-name rac-dev-wildcard \
+  --resource-group rg-rac-dev \
+  --query "domainValidationState"
+```
+
+State should change from `ValidationTokenNotFound` to `Approved`. Once approved, HTTPS traffic to `*.rac-dev.example.org` is routed through Front Door to App Gateway.
+
 ### TLS Certificate Setup
 
 If using App Gateway with a Key Vault-referenced certificate:
 
 1. The certificate is already stored in the bootstrap Key Vault.
-2. Grant App Gateway's managed identity `Key Vault Certificates User` on the bootstrap vault:
+2. Grant App Gateway's managed identity `Key Vault Certificates User` on the bootstrap vault (note: the role assignment is created in-repo by the Bicep infrastructure):
 
 ```bash
-# Get App Gateway's managed identity
-APP_GW_ID=$(az resource show \
-  --resource-group rg-rac-dev \
-  --name appgw-rac-dev \
-  --resource-type "Microsoft.Network/applicationGateways" \
-  --query identity.principalId -o tsv)
-
-# Grant access
-az keyvault set-policy \
-  --name kv-rac-bootstrap-001 \
-  --object-id $APP_GW_ID \
-  --certificate-permissions get list
+# This is handled automatically by the infrastructure code (role-assignments.bicep)
+# No manual action required for the GHA deploy principal.
+# The appgw-rac-dev managed identity already has certificates access.
 ```
 
 ### Defender for Containers Verification

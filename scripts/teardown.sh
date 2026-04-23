@@ -56,10 +56,24 @@ delete_rg_if_exists "$RG_PLATFORM"
 
 echo
 echo "Waiting for resource group deletions to complete (this can take 10–20 minutes)..."
+
+# Maximum wait time: 30 minutes per RG = 1800 seconds
+MAX_WAIT_SECONDS=1800
+ELAPSED=0
+
 for rg in "$RG_TIER3" "$RG_PLATFORM"; do
+  ELAPSED=0
   while az group exists --name "$rg" | grep -q true; do
+    if (( ELAPSED >= MAX_WAIT_SECONDS )); then
+      echo "error: resource group deletion stalled after $(( ELAPSED / 60 )) minutes: $rg" >&2
+      echo "Common causes: purge-protected Key Vault child resources, soft-deleted storage accounts, or resource locks." >&2
+      echo "Check Azure Activity Log for lock holders and resource deletion errors." >&2
+      echo "Rerun this script after manual intervention." >&2
+      exit 1
+    fi
     sleep 15
-    echo "  still deleting $rg..."
+    ELAPSED=$(( ELAPSED + 15 ))
+    echo "  still deleting $rg... (elapsed: $(( ELAPSED / 60 )) min)"
   done
   echo "  $rg deleted."
 done
