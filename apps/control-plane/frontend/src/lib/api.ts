@@ -1,0 +1,182 @@
+// pattern: Imperative Shell
+
+import {
+  submissionCreateSchema,
+  submissionResponseSchema,
+  submissionListResponseSchema,
+  convertKeysToSnake,
+  convertKeysToCamel,
+  apiErrorSchema,
+} from '@/features/submissions/schemas';
+import { acquireApiToken } from './msal';
+import type {
+  SubmissionCreateRequest,
+  SubmissionResponse,
+  SubmissionListResponse,
+  ApiError,
+} from '@/features/submissions/schemas';
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+
+interface FetchOptions extends RequestInit {
+  skipAuth?: boolean;
+}
+
+/**
+ * Parses and validates API error response, extracting per-field errors if present.
+ */
+function parseApiError(status: number, body: unknown): ApiError {
+  const parsed = apiErrorSchema.safeParse(body);
+  if (parsed.success) {
+    return parsed.data;
+  }
+
+  // Fallback for malformed responses
+  return {
+    code: `http_${status}`,
+    message: typeof body === 'string' ? body : 'Unknown error',
+  };
+}
+
+/**
+ * Core fetch wrapper with MSAL auth, idempotency, and request correlation.
+ */
+async function apiFetch(
+  path: string,
+  options: FetchOptions = {}
+): Promise<Response> {
+  const { skipAuth = false, ...fetchOptions } = options;
+
+  const url = new URL(path, apiBaseUrl);
+  const isRetry = (fetchOptions as any).__isRetry;
+  delete (fetchOptions as any).__isRetry;
+
+  // Add authorization header
+  if (!skipAuth) {
+    try {
+      const token = await acquireApiToken();
+      fetchOptions.headers ??= {};
+      (fetchOptions.headers as Record<string, string>)['Authorization'] =
+        `Bearer ${token}`;
+    } catch (error) {
+      throw new Error(`Failed to acquire token: ${String(error)}`);
+    }
+  }
+
+  // Add correlation headers
+  const requestId = crypto.randomUUID();
+  fetchOptions.headers ??= {};
+  (fetchOptions.headers as Record<string, string>)['X-Request-Id'] = requestId;
+
+  // Add idempotency key for mutations
+  const method = fetchOptions.method?.toUpperCase() || 'GET';
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    (fetchOptions.headers as Record<string, string>)['Idempotency-Key'] =
+      crypto.randomUUID();
+  }
+
+  let response = await fetch(url.toString(), fetchOptions);
+
+  // On 401, retry once with fresh token
+  if (response.status === 401 && !isRetry) {
+    try {
+      const token = await acquireApiToken();
+      (fetchOptions.headers as Record<string, string>)['Authorization'] =
+        `Bearer ${token}`;
+      (fetchOptions as any).__isRetry = true;
+      response = await fetch(url.toString(), fetchOptions);
+    } catch (error) {
+      // If refresh fails, return original 401
+      return response;
+    }
+  }
+
+  return response;
+}
+
+/**
+ * Creates a submission via POST /submissions.
+ * Returns the created submission with ID.
+ */
+export async function createSubmission(
+  req: SubmissionCreateRequest
+): Promise<SubmissionResponse> {
+  // Convert camelCase request to snake_case for backend
+  const snakeBody = convertKeysToSnake(
+    submissionCreateSchema.parse(req) as Record<string, unknown>
+  );
+
+  const response = await apiFetch('/submissions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(snakeBody),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json();
+    const error = parseApiError(response.status, errorBody);
+    const err = new Error(error.message) as Error & { apiError: ApiError };
+    err.apiError = error;
+    throw err;
+  }
+
+  const body = await response.json();
+  // Convert response from snake_case to camelCase
+  const camelBody = convertKeysToCamel(body as Record<string, unknown>);
+  return submissionResponseSchema.parse(camelBody);
+}
+
+/**
+ * Lists submissions with pagination and status filtering.
+ */
+export async function listSubmissions(options: {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+}): Promise<SubmissionListResponse> {
+  const params = new URLSearchParams();
+  if (options.page !== undefined) {
+    params.append('page', String(options.page));
+  }
+  if (options.pageSize !== undefined) {
+    params.append('page_size', String(options.pageSize));
+  }
+  if (options.status !== undefined) {
+    params.append('status', options.status);
+  }
+
+  const url = `/submissions${params.toString() ? '?' + params : ''}`;
+  const response = await apiFetch(url);
+
+  if (!response.ok) {
+    const errorBody = await response.json();
+    const error = parseApiError(response.status, errorBody);
+    throw new Error(error.message);
+  }
+
+  const body = await response.json();
+  const camelBody = convertKeysToCamel(body as Record<string, unknown>);
+  return submissionListResponseSchema.parse(camelBody);
+}
+
+/**
+ * Fetches a single submission by ID.
+ */
+export async function getSubmission(id: string): Promise<SubmissionResponse> {
+  const response = await apiFetch(`/submissions/${id}`);
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('Submission not found');
+    }
+    const errorBody = await response.json();
+    const error = parseApiError(response.status, errorBody);
+    throw new Error(error.message);
+  }
+
+  const body = await response.json();
+  const camelBody = convertKeysToCamel(body as Record<string, unknown>);
+  return submissionResponseSchema.parse(camelBody);
+}

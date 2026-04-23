@@ -1,0 +1,96 @@
+version: '3.9'
+
+services:
+  postgres:
+    build:
+      context: ./backend/tests/fixtures/postgres
+    container_name: rac-postgres-dev
+    environment:
+      POSTGRES_DB: rac
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - rac_postgres_data:/var/lib/postgresql/data
+      - ./backend/tests/fixtures/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rac-dev
+
+  mock-oidc:
+    image: ghcr.io/soluto/oidc-server-mock:latest
+    container_name: rac-mock-oidc
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      # Configuration for mock OIDC
+      USERS__0__USERNAME: testuser
+      USERS__0__PASSWORD: password
+      USERS__0__CLAIMS__SUB: '550e8400-e29b-41d4-a716-446655440000'
+      USERS__0__CLAIMS__OID: '550e8400-e29b-41d4-a716-446655440000'
+      USERS__0__CLAIMS__EMAIL: testuser@example.com
+      USERS__0__CLAIMS__NAME: Test User
+      CLIENTS__0__CLIENTID: '22222222-3333-4444-5555-666666666666'
+      CLIENTS__0__CLIENTSECRET: 'client-secret-for-dev'
+      CLIENTS__0__REDIRECTURIS__0: 'http://localhost:3000/auth/openid/return'
+      CLIENTS__0__ALLOWEDSCOPES__0: 'openid'
+      CLIENTS__0__ALLOWEDSCOPES__1: 'profile'
+      CLIENTS__0__ALLOWEDSCOPES__2: 'email'
+      CLIENTS__0__ALLOWEDSCOPES__3: 'api://rac-control-plane/submit'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/.well-known/openid-configuration"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rac-dev
+
+  control-plane:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rac-control-plane-dev
+    ports:
+      - "8000:8080"
+    environment:
+      RAC_ENV: dev
+      RAC_INSTITUTION_NAME: Moffitt Cancer Center
+      RAC_PARENT_DOMAIN: localhost:8000
+      RAC_IDP_TENANT_ID: 12345678-1234-1234-1234-123456789012
+      RAC_IDP_CLIENT_ID: 87654321-4321-4321-4321-210987654321
+      RAC_IDP_API_CLIENT_ID: 11111111-2222-3333-4444-555555555555
+      RAC_PG_HOST: postgres
+      RAC_PG_PORT: 5432
+      RAC_PG_DB: rac
+      RAC_PG_USER: rac_app
+      RAC_PG_PASSWORD: devonly_rac_app
+      RAC_PG_SSL_MODE: disable
+      RAC_KV_URI: https://rac-kv-dev.vault.azure.net/
+      RAC_BLOB_ACCOUNT_URL: https://racstoragedev.blob.core.windows.net/
+      RAC_ACR_LOGIN_SERVER: racacrdev.azurecr.io
+      RAC_ACA_ENV_RESOURCE_ID: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rac-dev/providers/Microsoft.App/managedEnvironments/rac-env-dev
+      RAC_SCAN_SEVERITY_GATE: high
+      RAC_APPROVER_ROLE_RESEARCH: rac-approver-research
+      RAC_APPROVER_ROLE_IT: rac-approver-it
+      RAC_WEBHOOK_SECRET_ROTATION_DAYS: 30
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-oidc:
+        condition: service_healthy
+    networks:
+      - rac-dev
+
+volumes:
+  rac_postgres_data:
+
+networks:
+  rac-dev:
+    driver: bridge
