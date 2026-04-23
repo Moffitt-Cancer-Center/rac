@@ -301,6 +301,39 @@ KV_URI=$(az deployment sub show \
 echo "Key Vault: $KV_URI"
 ```
 
+### Verify Postgres `pg_uuidv7` Extension Allowlist
+
+Phase 2 migrations call `uuid_generate_v7()`, which requires the `pg_uuidv7` extension. The Bicep module adds it to `azure.extensions` shared_preload_libraries, but allowlist availability varies by PG version and region. Confirm:
+
+```bash
+az postgres flexible-server parameter show \
+  --resource-group rg-rac-dev \
+  --server-name rac-dev-pg \
+  --name azure.extensions \
+  --query "value" -o tsv
+# Expected: value contains "pg_uuidv7"
+
+az postgres flexible-server parameter show \
+  --resource-group rg-rac-dev \
+  --server-name rac-dev-pg \
+  --name azure.extensions \
+  --query "allowedValues" -o tsv | tr ',' '\n' | grep -w pg_uuidv7
+# Expected: prints "pg_uuidv7" (extension is on the region's allowlist)
+```
+
+If `pg_uuidv7` is NOT in `allowedValues` for your region+version, you have two options:
+
+1. **Re-register with the allowlist manually** (sometimes needed if the first deploy raced against the server's provisioning):
+   ```bash
+   az postgres flexible-server parameter set \
+     --resource-group rg-rac-dev \
+     --server-name rac-dev-pg \
+     --name azure.extensions \
+     --value pg_uuidv7
+   ```
+
+2. **Fall back to `uuid-ossp`** (always available) — update Phase 2's Alembic migration to create `uuid-ossp` instead and wrap `uuid_generate_v7()` with a SQL function using `uuid_generate_v4()` as a stopgap. Track the restoration in a TODO tied to the pg_uuidv7 GA.
+
 ### Front Door Custom Domain Validation
 
 Front Door custom domains require DNS TXT record validation. This is performed by Azure automatically.
