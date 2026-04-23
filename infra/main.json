@@ -1,0 +1,3032 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "languageVersion": "2.0",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "7581999485523594462"
+    }
+  },
+  "functions": [
+    {
+      "namespace": "__bicep",
+      "members": {
+        "buildTags": {
+          "parameters": [
+            {
+              "type": "string",
+              "name": "racEnv"
+            },
+            {
+              "type": "object",
+              "name": "extra"
+            }
+          ],
+          "output": {
+            "type": "object",
+            "value": "[union(createObject('rac_env', parameters('racEnv'), 'rac_managed_by', 'bicep'), parameters('extra'))]"
+          },
+          "metadata": {
+            "__bicep_imported_from!": {
+              "sourceTemplate": "modules/tags.bicep"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "parameters": {
+    "racEnv": {
+      "type": "string",
+      "allowedValues": [
+        "dev",
+        "staging",
+        "prod"
+      ],
+      "metadata": {
+        "description": "Deployment environment: dev | staging | prod"
+      }
+    },
+    "parentDomain": {
+      "type": "string",
+      "metadata": {
+        "description": "Parent DNS domain, e.g. rac.moffitt.org"
+      }
+    },
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region for all resources"
+      }
+    },
+    "idpTenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra tenant ID for OIDC issuer validation"
+      }
+    },
+    "acrName": {
+      "type": "string",
+      "metadata": {
+        "description": "Globally unique ACR name (3-50 alphanumeric)"
+      }
+    },
+    "storageAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Globally unique Storage account name (3-24 lowercase alphanumeric)"
+      }
+    },
+    "pgServerName": {
+      "type": "string",
+      "metadata": {
+        "description": "Globally unique Postgres server name"
+      }
+    },
+    "pgAdminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Postgres admin password. MUST come from Key Vault reference in bicepparam; never inline."
+      }
+    },
+    "appGwTlsCertKvSecretId": {
+      "type": "securestring",
+      "metadata": {
+        "description": "App Gateway TLS certificate Key Vault secret ID (full versioned secret URI)"
+      }
+    },
+    "controlPlaneIdentityPrincipalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Control Plane managed identity principal ID (empty on first deploy; populated in Phase 5 Task 1 re-deploy)"
+      }
+    },
+    "shimMiPrincipalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Shim managed identity principal ID (empty on first deploy; populated in Phase 6)"
+      }
+    },
+    "vnetOctet": {
+      "type": "int",
+      "metadata": {
+        "description": "VNet third octet (10/20/30 for dev/staging/prod)"
+      }
+    },
+    "pgSkuName": {
+      "type": "string",
+      "metadata": {
+        "description": "Postgres sizing: SKU name"
+      }
+    },
+    "pgSkuTier": {
+      "type": "string",
+      "metadata": {
+        "description": "Postgres sizing: SKU tier"
+      }
+    },
+    "pgStorageSizeGB": {
+      "type": "int",
+      "metadata": {
+        "description": "Postgres sizing: storage size in GB"
+      }
+    },
+    "pgHaMode": {
+      "type": "string",
+      "metadata": {
+        "description": "Postgres sizing: HA mode (Disabled, SameZone, ZoneRedundant)"
+      }
+    },
+    "pgBackupRetentionDays": {
+      "type": "int",
+      "metadata": {
+        "description": "Postgres sizing: backup retention days"
+      }
+    },
+    "acaZoneRedundant": {
+      "type": "bool",
+      "metadata": {
+        "description": "ACA environment: zone redundancy (dev: false, staging/prod: true)"
+      }
+    },
+    "acaProfileSku": {
+      "type": "string",
+      "metadata": {
+        "description": "ACA environment: workload profile SKU (Consumption or D4)"
+      }
+    },
+    "actionGroupEmails": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Alert action group — email recipients (comma-separated oncall addresses)"
+      }
+    },
+    "actionGroupWebhookUri": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Alert action group — optional webhook URI (PagerDuty/ServiceNow). Leave empty to skip."
+      }
+    },
+    "shimAppId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Shim ACA app resource ID for alerts (empty on first deploy; populate after Phase 6)"
+      }
+    },
+    "controlPlaneAppId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Control Plane ACA app resource ID for alerts (empty on first deploy; populate after Phase 2)"
+      }
+    },
+    "pipelineTimeoutMinutes": {
+      "type": "int",
+      "defaultValue": 120,
+      "metadata": {
+        "description": "Pipeline timeout in minutes (used to compute stuck-pipeline alert threshold)"
+      }
+    },
+    "kvEnablePurgeProtection": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Key Vault purge protection (false for dev, true for staging/prod)"
+      }
+    },
+    "kvSoftDeleteRetentionInDays": {
+      "type": "int",
+      "defaultValue": 90,
+      "minValue": 7,
+      "maxValue": 90,
+      "metadata": {
+        "description": "Key Vault soft-delete retention in days (7 for dev, 90 for staging/prod)"
+      }
+    }
+  },
+  "variables": {
+    "commonTags": "[__bicep.buildTags(parameters('racEnv'), createObject())]",
+    "kvName": "[format('kv-rac-{0}-{1}', uniqueString(subscription().id), parameters('racEnv'))]",
+    "workspaceName": "[format('la-rac-{0}-{1}', uniqueString(subscription().id), parameters('racEnv'))]",
+    "componentName": "[format('ai-rac-{0}-{1}', uniqueString(subscription().id), parameters('racEnv'))]",
+    "appGwName": "[format('appgw-rac-{0}', parameters('racEnv'))]"
+  },
+  "resources": {
+    "rg": {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2023-07-01",
+      "name": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]"
+    },
+    "rgTier3": {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2023-07-01",
+      "name": "[format('rg-rac-tier3-{0}', parameters('racEnv'))]",
+      "location": "[parameters('location')]",
+      "tags": "[union(variables('commonTags'), createObject('rac_managed_by', 'rac-control-plane'))]"
+    },
+    "network": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-network",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "vnetOctet": {
+            "value": "[parameters('vnetOctet')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "1223284419374934961"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "RAC deployment environment (dev, staging, prod)"
+              }
+            },
+            "vnetOctet": {
+              "type": "int",
+              "metadata": {
+                "description": "VNet third octet (10.X.0.0/16). Dev: 10, Staging: 20, Prod: 30"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags applied to all resources"
+              }
+            }
+          },
+          "variables": {
+            "vnetName": "[format('vnet-rac-{0}', parameters('racEnv'))]",
+            "vnetAddressSpace": "[format('10.{0}.0.0/16', parameters('vnetOctet'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-05-01",
+              "name": "[variables('vnetName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[variables('vnetAddressSpace')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "snet-aca",
+                    "properties": {
+                      "addressPrefix": "[format('10.{0}.0.0/21', parameters('vnetOctet'))]",
+                      "delegations": [
+                        {
+                          "name": "aca-delegation",
+                          "properties": {
+                            "serviceName": "Microsoft.App/environments"
+                          }
+                        }
+                      ],
+                      "serviceEndpoints": [],
+                      "privateLinkServiceNetworkPolicies": "Enabled",
+                      "privateEndpointNetworkPolicies": "Enabled"
+                    }
+                  },
+                  {
+                    "name": "snet-appgw",
+                    "properties": {
+                      "addressPrefix": "[format('10.{0}.8.0/24', parameters('vnetOctet'))]",
+                      "serviceEndpoints": [],
+                      "privateLinkServiceNetworkPolicies": "Enabled",
+                      "privateEndpointNetworkPolicies": "Enabled"
+                    }
+                  },
+                  {
+                    "name": "snet-pe",
+                    "properties": {
+                      "addressPrefix": "[format('10.{0}.9.0/24', parameters('vnetOctet'))]",
+                      "serviceEndpoints": [],
+                      "privateLinkServiceNetworkPolicies": "Enabled",
+                      "privateEndpointNetworkPolicies": "Disabled"
+                    }
+                  },
+                  {
+                    "name": "snet-pg",
+                    "properties": {
+                      "addressPrefix": "[format('10.{0}.10.0/24', parameters('vnetOctet'))]",
+                      "serviceEndpoints": [],
+                      "privateLinkServiceNetworkPolicies": "Enabled",
+                      "privateEndpointNetworkPolicies": "Enabled"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "vnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Virtual Network resource ID"
+              },
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+            },
+            "acaSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA subnet resource ID"
+              },
+              "value": "[format('{0}/subnets/snet-aca', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')))]"
+            },
+            "appGwSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "App Gateway subnet resource ID"
+              },
+              "value": "[format('{0}/subnets/snet-appgw', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')))]"
+            },
+            "peSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Private Endpoint subnet resource ID"
+              },
+              "value": "[format('{0}/subnets/snet-pe', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')))]"
+            },
+            "pgSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Postgres private endpoint subnet resource ID"
+              },
+              "value": "[format('{0}/subnets/snet-pg', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "rg"
+      ]
+    },
+    "logAnalytics": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-loganalytics",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "workspaceName": {
+            "value": "[variables('workspaceName')]"
+          },
+          "componentName": {
+            "value": "[variables('componentName')]"
+          },
+          "retentionDays": {
+            "value": 30
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "16404633145920545895"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "RAC deployment environment (dev, staging, prod)"
+              }
+            },
+            "workspaceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name for the Log Analytics workspace"
+              }
+            },
+            "componentName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name for the Application Insights component"
+              }
+            },
+            "retentionDays": {
+              "type": "int",
+              "defaultValue": 30,
+              "metadata": {
+                "description": "Log Analytics retention in days"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags applied to all resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2023-09-01",
+              "name": "[parameters('workspaceName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                },
+                "retentionInDays": "[parameters('retentionDays')]",
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled"
+              }
+            },
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[parameters('componentName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled",
+                "RetentionInDays": "[parameters('retentionDays')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "workspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics workspace resource ID"
+              },
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
+            },
+            "workspaceCustomerId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics workspace customer ID"
+              },
+              "value": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), '2023-09-01').customerId]"
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights connection string"
+              },
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('componentName')), '2020-02-02').ConnectionString]"
+            },
+            "appInsightsId": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights resource ID"
+              },
+              "value": "[resourceId('Microsoft.Insights/components', parameters('componentName'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "rg"
+      ]
+    },
+    "keyVault": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-keyvault",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "kvName": {
+            "value": "[variables('kvName')]"
+          },
+          "tenantId": {
+            "value": "[parameters('idpTenantId')]"
+          },
+          "peSubnetId": {
+            "value": "[reference('network').outputs.peSubnetId.value]"
+          },
+          "enablePurgeProtection": {
+            "value": "[parameters('kvEnablePurgeProtection')]"
+          },
+          "softDeleteRetentionInDays": {
+            "value": "[parameters('kvSoftDeleteRetentionInDays')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "12128461614108661552"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "RAC deployment environment (dev, staging, prod)"
+              }
+            },
+            "kvName": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault name (must be globally unique, 3-24 alphanumeric)"
+              }
+            },
+            "tenantId": {
+              "type": "string",
+              "metadata": {
+                "description": "Entra tenant ID for the subscription"
+              }
+            },
+            "peSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Private Endpoint subnet resource ID"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags applied to all resources"
+              }
+            },
+            "enablePurgeProtection": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Purge protection — set false only for dev to allow cleanup"
+              }
+            },
+            "softDeleteRetentionInDays": {
+              "type": "int",
+              "defaultValue": 90,
+              "minValue": 7,
+              "maxValue": 90,
+              "metadata": {
+                "description": "Soft-delete retention in days (7-90)"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults",
+              "apiVersion": "2023-07-01",
+              "name": "[parameters('kvName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "tenantId": "[parameters('tenantId')]",
+                "sku": {
+                  "family": "A",
+                  "name": "standard"
+                },
+                "accessPolicies": [],
+                "enableRbacAuthorization": true,
+                "enableSoftDelete": true,
+                "softDeleteRetentionInDays": "[parameters('softDeleteRetentionInDays')]",
+                "enablePurgeProtection": "[parameters('enablePurgeProtection')]",
+                "publicNetworkAccess": "Disabled",
+                "networkAcls": {
+                  "defaultAction": "Deny",
+                  "bypass": "AzureServices"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2023-11-01",
+              "name": "[format('pe-{0}', parameters('kvName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('peSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[format('pec-{0}', parameters('kvName'))]",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.KeyVault/vaults', parameters('kvName'))]",
+                      "groupIds": [
+                        "vault"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('kvName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "kvId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault resource ID"
+              },
+              "value": "[resourceId('Microsoft.KeyVault/vaults', parameters('kvName'))]"
+            },
+            "kvUri": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault URI"
+              },
+              "value": "[reference(resourceId('Microsoft.KeyVault/vaults', parameters('kvName')), '2023-07-01').vaultUri]"
+            },
+            "kvName": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault name"
+              },
+              "value": "[parameters('kvName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "network",
+        "rg"
+      ]
+    },
+    "blobStorage": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-blobstorage",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "storageAccountName": {
+            "value": "[parameters('storageAccountName')]"
+          },
+          "peSubnetId": {
+            "value": "[reference('network').outputs.peSubnetId.value]"
+          },
+          "sku": "[if(equals(parameters('racEnv'), 'dev'), createObject('value', 'Standard_LRS'), createObject('value', 'Standard_GRS'))]",
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "4394451603878801572"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "RAC deployment environment (dev, staging, prod)"
+              }
+            },
+            "storageAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage account name (must be globally unique, 3-24 lowercase alphanumeric)"
+              }
+            },
+            "peSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Private Endpoint subnet resource ID"
+              }
+            },
+            "sku": {
+              "type": "string",
+              "defaultValue": "Standard_GRS",
+              "metadata": {
+                "description": "Storage SKU (Standard_GRS for prod, Standard_LRS for dev)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags applied to all resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('storageAccountName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "StorageV2",
+              "sku": {
+                "name": "[parameters('sku')]"
+              },
+              "properties": {
+                "accessTier": "Hot",
+                "allowBlobPublicAccess": false,
+                "minimumTlsVersion": "TLS1_2",
+                "publicNetworkAccess": "Disabled",
+                "networkAcls": {
+                  "bypass": "AzureServices",
+                  "defaultAction": "Deny"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', parameters('storageAccountName'), 'default')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}/{2}', parameters('storageAccountName'), 'default', 'researcher-uploads')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}/{2}', parameters('storageAccountName'), 'default', 'scan-artifacts')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}/{2}', parameters('storageAccountName'), 'default', 'sboms')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}/{2}', parameters('storageAccountName'), 'default', 'cost-exports')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}/{2}', parameters('storageAccountName'), 'default', 'build-logs')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/managementPolicies",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', parameters('storageAccountName'), 'default')]",
+              "properties": {
+                "policy": {
+                  "rules": [
+                    {
+                      "enabled": true,
+                      "name": "ScanArtifactsLifecycle",
+                      "type": "Lifecycle",
+                      "definition": {
+                        "filters": {
+                          "blobTypes": [
+                            "blockBlob"
+                          ],
+                          "prefixMatch": [
+                            "scan-artifacts/"
+                          ]
+                        },
+                        "actions": {
+                          "baseBlob": {
+                            "tierToCool": {
+                              "daysAfterModificationGreaterThan": 60
+                            },
+                            "tierToArchive": {
+                              "daysAfterModificationGreaterThan": 365
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "enabled": true,
+                      "name": "SbomsLifecycle",
+                      "type": "Lifecycle",
+                      "definition": {
+                        "filters": {
+                          "blobTypes": [
+                            "blockBlob"
+                          ],
+                          "prefixMatch": [
+                            "sboms/"
+                          ]
+                        },
+                        "actions": {
+                          "baseBlob": {
+                            "tierToCool": {
+                              "daysAfterModificationGreaterThan": 60
+                            },
+                            "tierToArchive": {
+                              "daysAfterModificationGreaterThan": 365
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "enabled": true,
+                      "name": "BuildLogsLifecycle",
+                      "type": "Lifecycle",
+                      "definition": {
+                        "filters": {
+                          "blobTypes": [
+                            "blockBlob"
+                          ],
+                          "prefixMatch": [
+                            "build-logs/"
+                          ]
+                        },
+                        "actions": {
+                          "baseBlob": {
+                            "tierToCool": {
+                              "daysAfterModificationGreaterThan": 60
+                            },
+                            "tierToArchive": {
+                              "daysAfterModificationGreaterThan": 365
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "enabled": true,
+                      "name": "CostExportsDelete",
+                      "type": "Lifecycle",
+                      "definition": {
+                        "filters": {
+                          "blobTypes": [
+                            "blockBlob"
+                          ],
+                          "prefixMatch": [
+                            "cost-exports/"
+                          ]
+                        },
+                        "actions": {
+                          "baseBlob": {
+                            "delete": {
+                              "daysAfterModificationGreaterThan": 730
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2023-11-01",
+              "name": "[format('pe-{0}-blob', parameters('storageAccountName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('peSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[format('pec-{0}-blob', parameters('storageAccountName'))]",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]",
+                      "groupIds": [
+                        "blob"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "storageAccountId": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage account resource ID"
+              },
+              "value": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+            },
+            "storageAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage account name"
+              },
+              "value": "[parameters('storageAccountName')]"
+            },
+            "blobEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Blob endpoint"
+              },
+              "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-05-01').primaryEndpoints.blob]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "network",
+        "rg"
+      ]
+    },
+    "postgres": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-postgres",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "serverName": {
+            "value": "[parameters('pgServerName')]"
+          },
+          "adminPassword": {
+            "value": "[parameters('pgAdminPassword')]"
+          },
+          "skuName": {
+            "value": "[parameters('pgSkuName')]"
+          },
+          "skuTier": {
+            "value": "[parameters('pgSkuTier')]"
+          },
+          "storageSizeGB": {
+            "value": "[parameters('pgStorageSizeGB')]"
+          },
+          "haMode": {
+            "value": "[parameters('pgHaMode')]"
+          },
+          "backupRetentionDays": {
+            "value": "[parameters('pgBackupRetentionDays')]"
+          },
+          "pgSubnetId": {
+            "value": "[reference('network').outputs.pgSubnetId.value]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "4594676212111844399"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "RAC deployment environment (dev, staging, prod)"
+              }
+            },
+            "serverName": {
+              "type": "string",
+              "metadata": {
+                "description": "Postgres Flexible Server name"
+              }
+            },
+            "adminPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Postgres administrator login password (must come from Key Vault reference)"
+              }
+            },
+            "skuName": {
+              "type": "string",
+              "metadata": {
+                "description": "Postgres SKU name (e.g., Standard_B2s, Standard_D2s_v3)"
+              }
+            },
+            "skuTier": {
+              "type": "string",
+              "metadata": {
+                "description": "Postgres SKU tier (e.g., Burstable, GeneralPurpose)"
+              }
+            },
+            "storageSizeGB": {
+              "type": "int",
+              "metadata": {
+                "description": "Storage size in GB"
+              }
+            },
+            "haMode": {
+              "type": "string",
+              "metadata": {
+                "description": "High Availability mode (Disabled, SameZone, ZoneRedundant)"
+              }
+            },
+            "backupRetentionDays": {
+              "type": "int",
+              "metadata": {
+                "description": "Backup retention days"
+              }
+            },
+            "pgSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Postgres private endpoint subnet resource ID"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags applied to all resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers",
+              "apiVersion": "2023-06-01-preview",
+              "name": "[parameters('serverName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "[parameters('skuName')]",
+                "tier": "[parameters('skuTier')]"
+              },
+              "properties": {
+                "version": "16",
+                "administratorLogin": "rac_admin",
+                "administratorLoginPassword": "[parameters('adminPassword')]",
+                "storage": {
+                  "storageSizeGB": "[parameters('storageSizeGB')]"
+                },
+                "backup": {
+                  "backupRetentionDays": "[parameters('backupRetentionDays')]",
+                  "geoRedundantBackup": "Enabled"
+                },
+                "highAvailability": {
+                  "mode": "[parameters('haMode')]"
+                },
+                "network": {
+                  "delegatedSubnetResourceId": "[parameters('pgSubnetId')]"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers/configurations",
+              "apiVersion": "2023-06-01-preview",
+              "name": "[format('{0}/{1}', parameters('serverName'), 'azure.extensions')]",
+              "properties": {
+                "value": "pg_uuidv7",
+                "source": "user-override"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "serverId": {
+              "type": "string",
+              "metadata": {
+                "description": "Postgres server resource ID"
+              },
+              "value": "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
+            },
+            "serverFqdn": {
+              "type": "string",
+              "metadata": {
+                "description": "Postgres server FQDN"
+              },
+              "value": "[reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName')), '2023-06-01-preview').fullyQualifiedDomainName]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "network",
+        "rg"
+      ]
+    },
+    "acr": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-acr",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "acrName": {
+            "value": "[parameters('acrName')]"
+          },
+          "peSubnetId": {
+            "value": "[reference('network').outputs.peSubnetId.value]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "1377463486938376506"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "RAC deployment environment (dev, staging, prod)"
+              }
+            },
+            "acrName": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Container Registry name (globally unique, max 50 chars, alphanumeric)"
+              }
+            },
+            "peSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Private endpoint subnet resource ID"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags applied to all resources"
+              }
+            }
+          },
+          "variables": {
+            "acrNameNormalized": "[toLower(parameters('acrName'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ContainerRegistry/registries",
+              "apiVersion": "2023-11-01-preview",
+              "name": "[variables('acrNameNormalized')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "Premium"
+              },
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "adminUserEnabled": false,
+                "publicNetworkAccess": "Disabled",
+                "policies": {
+                  "quarantinePolicy": {
+                    "status": "enabled"
+                  }
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2023-11-01",
+              "name": "[format('pe-acr-{0}', parameters('racEnv'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('peSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "acr-connection",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized'))]",
+                      "groupIds": [
+                        "registry"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2023-11-01",
+              "name": "[format('{0}/{1}', format('pe-acr-{0}', parameters('racEnv')), 'acr-zone-group')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "acr-privatelink-zone",
+                    "properties": {
+                      "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.azurecr.io')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.azurecr.io')]",
+                "[resourceId('Microsoft.Network/privateEndpoints', format('pe-acr-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "privatelink.azurecr.io",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            }
+          ],
+          "outputs": {
+            "acrId": {
+              "type": "string",
+              "metadata": {
+                "description": "Container Registry resource ID"
+              },
+              "value": "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized'))]"
+            },
+            "acrLoginServer": {
+              "type": "string",
+              "metadata": {
+                "description": "Container Registry login server FQDN"
+              },
+              "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized')), '2023-11-01-preview').loginServer]"
+            },
+            "acrResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Container Registry resource ID (alias for acrId)"
+              },
+              "value": "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "network",
+        "rg"
+      ]
+    },
+    "acaEnvironment": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-acaenv",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "envName": {
+            "value": "[format('aca-rac-{0}', parameters('racEnv'))]"
+          },
+          "acaSubnetId": {
+            "value": "[reference('network').outputs.acaSubnetId.value]"
+          },
+          "workspaceCustomerId": {
+            "value": "[reference('logAnalytics').outputs.workspaceCustomerId.value]"
+          },
+          "workspaceId": {
+            "value": "[reference('logAnalytics').outputs.workspaceId.value]"
+          },
+          "zoneRedundant": {
+            "value": "[parameters('acaZoneRedundant')]"
+          },
+          "profileSku": {
+            "value": "[parameters('acaProfileSku')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "6967461495362003969"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "RAC deployment environment (dev, staging, prod)"
+              }
+            },
+            "envName": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA managed environment name"
+              }
+            },
+            "acaSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA infrastructure subnet resource ID"
+              }
+            },
+            "workspaceCustomerId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics workspace custom ID (customer ID)"
+              }
+            },
+            "workspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics workspace resource ID"
+              }
+            },
+            "zoneRedundant": {
+              "type": "bool",
+              "metadata": {
+                "description": "Enable zone redundancy for ACA environment"
+              }
+            },
+            "profileSku": {
+              "type": "string",
+              "metadata": {
+                "description": "Workload profile SKU (e.g., Consumption, D4)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags applied to all resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/managedEnvironments",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('envName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "appLogsConfiguration": {
+                  "destination": "log-analytics",
+                  "logAnalyticsConfiguration": {
+                    "customerId": "[parameters('workspaceCustomerId')]",
+                    "sharedKey": "[listKeys(parameters('workspaceId'), '2023-09-01').primarySharedKey]"
+                  }
+                },
+                "vnetConfiguration": {
+                  "infrastructureSubnetId": "[parameters('acaSubnetId')]",
+                  "internal": true
+                },
+                "zoneRedundant": "[parameters('zoneRedundant')]",
+                "workloadProfiles": [
+                  {
+                    "name": "Consumption",
+                    "workloadProfileType": "Consumption"
+                  },
+                  {
+                    "name": "apps",
+                    "workloadProfileType": "[parameters('profileSku')]"
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "envId": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA managed environment resource ID"
+              },
+              "value": "[resourceId('Microsoft.App/managedEnvironments', parameters('envName'))]"
+            },
+            "envDefaultDomain": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA default domain (internal FQDN)"
+              },
+              "value": "[reference(resourceId('Microsoft.App/managedEnvironments', parameters('envName')), '2024-03-01').defaultDomain]"
+            },
+            "envStaticIp": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA static IP address"
+              },
+              "value": "[reference(resourceId('Microsoft.App/managedEnvironments', parameters('envName')), '2024-03-01').staticIp]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "logAnalytics",
+        "network",
+        "rg"
+      ]
+    },
+    "dnsZone": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-dnszone",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "parentDomain": {
+            "value": "[parameters('parentDomain')]"
+          },
+          "controlPlaneIdentityPrincipalId": {
+            "value": "[parameters('controlPlaneIdentityPrincipalId')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "2327358551888314814"
+            }
+          },
+          "parameters": {
+            "parentDomain": {
+              "type": "string",
+              "metadata": {
+                "description": "Parent DNS domain, e.g., rac.moffitt.org"
+              }
+            },
+            "controlPlaneIdentityPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Control Plane managed identity principal ID (empty on first deploy; populated in Phase 5 Task 1 re-deploy)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/dnsZones",
+              "apiVersion": "2018-05-01",
+              "name": "[parameters('parentDomain')]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "condition": "[not(empty(parameters('controlPlaneIdentityPrincipalId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.Network/dnsZones', parameters('parentDomain'))]",
+              "name": "[guid(resourceId('Microsoft.Network/dnsZones', parameters('parentDomain')), parameters('controlPlaneIdentityPrincipalId'), 'befefa01-2a29-4197-83a8-272ff33ce314')]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'befefa01-2a29-4197-83a8-272ff33ce314')]",
+                "principalId": "[parameters('controlPlaneIdentityPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/dnsZones', parameters('parentDomain'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "zoneId": {
+              "type": "string",
+              "metadata": {
+                "description": "DNS Zone resource ID"
+              },
+              "value": "[resourceId('Microsoft.Network/dnsZones', parameters('parentDomain'))]"
+            },
+            "zoneNameServers": {
+              "type": "array",
+              "metadata": {
+                "description": "DNS Zone name servers"
+              },
+              "value": "[reference(resourceId('Microsoft.Network/dnsZones', parameters('parentDomain')), '2018-05-01').nameServers]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "rg"
+      ]
+    },
+    "appGateway": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-appgw",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "appGwName": {
+            "value": "[variables('appGwName')]"
+          },
+          "appGwSubnetId": {
+            "value": "[reference('network').outputs.appGwSubnetId.value]"
+          },
+          "parentDomain": {
+            "value": "[parameters('parentDomain')]"
+          },
+          "tlsCertKvSecretId": {
+            "value": "[parameters('appGwTlsCertKvSecretId')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "12350808717761113628"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "Deployment environment: dev | staging | prod"
+              }
+            },
+            "appGwName": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Gateway name"
+              }
+            },
+            "appGwSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "App Gateway subnet ID"
+              }
+            },
+            "parentDomain": {
+              "type": "string",
+              "metadata": {
+                "description": "Parent DNS domain, e.g., rac.moffitt.org"
+              }
+            },
+            "tlsCertKvSecretId": {
+              "type": "securestring",
+              "metadata": {
+                "description": "TLS certificate Key Vault secret ID (full versioned secret URI)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags"
+              }
+            }
+          },
+          "variables": {
+            "appGwId": "[resourceId('Microsoft.Network/applicationGateways', parameters('appGwName'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/publicIPAddresses",
+              "apiVersion": "2023-11-01",
+              "name": "[format('pip-appgw-{0}', parameters('racEnv'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "Standard",
+                "tier": "Regional"
+              },
+              "zones": [
+                "1",
+                "2",
+                "3"
+              ],
+              "properties": {
+                "publicIPAllocationMethod": "Static",
+                "publicIPAddressVersion": "IPv4",
+                "idleTimeoutInMinutes": 4
+              }
+            },
+            {
+              "type": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies",
+              "apiVersion": "2023-11-01",
+              "name": "[format('waf-appgw-{0}', parameters('racEnv'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "policySettings": {
+                  "fileUploadLimitInMb": 100,
+                  "state": "Enabled",
+                  "mode": "Prevention",
+                  "requestBodyCheck": true,
+                  "maxRequestBodySizeInKb": 128
+                },
+                "managedRules": {
+                  "managedRuleSets": [
+                    {
+                      "ruleSetType": "OWASP",
+                      "ruleSetVersion": "3.2"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Network/applicationGateways",
+              "apiVersion": "2023-11-01",
+              "name": "[parameters('appGwName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "sku": {
+                  "name": "WAF_v2",
+                  "tier": "WAF_v2",
+                  "capacity": 2
+                },
+                "gatewayIPConfigurations": [
+                  {
+                    "name": "appGatewayIpConfig",
+                    "properties": {
+                      "subnet": {
+                        "id": "[parameters('appGwSubnetId')]"
+                      }
+                    }
+                  }
+                ],
+                "frontendIPConfigurations": [
+                  {
+                    "name": "appGatewayFrontendIP",
+                    "properties": {
+                      "publicIPAddress": {
+                        "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv')))]"
+                      }
+                    }
+                  }
+                ],
+                "frontendPorts": [
+                  {
+                    "name": "appGatewayFrontendPort443",
+                    "properties": {
+                      "port": 443
+                    }
+                  }
+                ],
+                "backendAddressPools": [
+                  {
+                    "name": "appGatewayBackendPool",
+                    "properties": {
+                      "backendAddresses": [
+                        {
+                          "fqdn": "shim.internal.eastus.azurecontainerapps.io"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "backendHttpSettingsCollection": [
+                  {
+                    "name": "appGatewayBackendHttpSettings",
+                    "properties": {
+                      "port": 443,
+                      "protocol": "Https",
+                      "cookieBasedAffinity": "Disabled",
+                      "requestTimeout": 120,
+                      "pickHostNameFromBackendAddress": true,
+                      "probeEnabled": false
+                    }
+                  }
+                ],
+                "httpListeners": [
+                  {
+                    "name": "appGatewayHttpsListener",
+                    "properties": {
+                      "frontendIPConfiguration": {
+                        "id": "[format('{0}/frontendIPConfigurations/appGatewayFrontendIP', variables('appGwId'))]"
+                      },
+                      "frontendPort": {
+                        "id": "[format('{0}/frontendPorts/appGatewayFrontendPort443', variables('appGwId'))]"
+                      },
+                      "protocol": "Https",
+                      "sslCertificate": {
+                        "id": "[format('{0}/sslCertificates/appGatewaySslCert', variables('appGwId'))]"
+                      },
+                      "hostName": "[format('*.{0}', parameters('parentDomain'))]",
+                      "hostNames": [
+                        "[format('*.{0}', parameters('parentDomain'))]"
+                      ],
+                      "requireServerNameIndication": true
+                    }
+                  }
+                ],
+                "requestRoutingRules": [
+                  {
+                    "name": "appGatewayRoutingRule",
+                    "properties": {
+                      "ruleType": "Basic",
+                      "httpListener": {
+                        "id": "[format('{0}/httpListeners/appGatewayHttpsListener', variables('appGwId'))]"
+                      },
+                      "backendAddressPool": {
+                        "id": "[format('{0}/backendAddressPools/appGatewayBackendPool', variables('appGwId'))]"
+                      },
+                      "backendHttpSettings": {
+                        "id": "[format('{0}/backendHttpSettings/appGatewayBackendHttpSettings', variables('appGwId'))]"
+                      }
+                    }
+                  }
+                ],
+                "sslCertificates": [
+                  {
+                    "name": "appGatewaySslCert",
+                    "properties": {
+                      "keyVaultSecretId": "[parameters('tlsCertKvSecretId')]"
+                    }
+                  }
+                ],
+                "firewallPolicy": {
+                  "id": "[resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', format('waf-appgw-{0}', parameters('racEnv')))]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv')))]",
+                "[resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', format('waf-appgw-{0}', parameters('racEnv')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "appGatewayId": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Gateway resource ID"
+              },
+              "value": "[resourceId('Microsoft.Network/applicationGateways', parameters('appGwName'))]"
+            },
+            "appGatewayPublicFqdn": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Gateway public IP FQDN"
+              },
+              "value": "[if(and(not(equals(reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings, null())), not(equals(reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings.fqdn, null()))), reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings.fqdn, reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').ipAddress)]"
+            },
+            "appGatewayPublicIp": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Gateway public IP address"
+              },
+              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').ipAddress]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "network",
+        "rg"
+      ]
+    },
+    "frontDoor": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-frontdoor",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "parentDomain": {
+            "value": "[parameters('parentDomain')]"
+          },
+          "appGatewayPublicFqdn": {
+            "value": "[reference('appGateway').outputs.appGatewayPublicFqdn.value]"
+          },
+          "appGatewayPrivateLinkResourceId": {
+            "value": ""
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "3774393792902435877"
+            }
+          },
+          "parameters": {
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "Deployment environment: dev | staging | prod"
+              }
+            },
+            "parentDomain": {
+              "type": "string",
+              "metadata": {
+                "description": "Parent DNS domain, e.g., rac.moffitt.org"
+              }
+            },
+            "appGatewayPublicFqdn": {
+              "type": "string",
+              "metadata": {
+                "description": "App Gateway public FQDN"
+              }
+            },
+            "appGatewayPrivateLinkResourceId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "App Gateway Private Link resource ID (empty if using public FQDN origin)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Cdn/profiles",
+              "apiVersion": "2023-05-01",
+              "name": "[format('afd-rac-{0}', parameters('racEnv'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "Premium_AzureFrontDoor"
+              }
+            },
+            {
+              "type": "Microsoft.Cdn/profiles/afdEndpoints",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', format('afd-rac-{0}', parameters('racEnv')), format('afd-endpoint-{0}', parameters('racEnv')))]",
+              "location": "global",
+              "properties": {
+                "enabledState": "Enabled"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Cdn/profiles/originGroups",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')))]",
+              "properties": {
+                "loadBalancingSettings": {
+                  "sampleSize": 4,
+                  "successfulSamplesRequired": 3,
+                  "additionalLatencyInMilliseconds": 50
+                },
+                "sessionAffinityState": "Disabled",
+                "trafficRestorationTimeToHealedOrNewEndpointsInMinutes": 10
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Cdn/profiles/originGroups/origins",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}/{2}', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')), format('origin-appgw-{0}', parameters('racEnv')))]",
+              "properties": {
+                "hostName": "[parameters('appGatewayPublicFqdn')]",
+                "httpPort": 80,
+                "httpsPort": 443,
+                "originHostHeader": "[parameters('appGatewayPublicFqdn')]",
+                "priority": 1,
+                "weight": 1000,
+                "enabledState": "Enabled",
+                "sharedPrivateLinkResource": "[if(not(empty(parameters('appGatewayPrivateLinkResourceId'))), createObject('privateLink', createObject('id', parameters('appGatewayPrivateLinkResourceId')), 'groupId', 'appgw', 'privateLinkLocation', 'eastus'), null())]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Cdn/profiles/originGroups', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Cdn/profiles/afdEndpoints/routes",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}/{2}', format('afd-rac-{0}', parameters('racEnv')), format('afd-endpoint-{0}', parameters('racEnv')), format('route-wildcard-{0}', parameters('racEnv')))]",
+              "properties": {
+                "originGroup": {
+                  "id": "[resourceId('Microsoft.Cdn/profiles/originGroups', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')))]"
+                },
+                "supportedProtocols": [
+                  "Https"
+                ],
+                "patternsToMatch": [
+                  "/*"
+                ],
+                "forwardingProtocol": "HttpsOnly",
+                "linkToDefaultDomain": "Enabled",
+                "httpsRedirect": "Enabled",
+                "enabledState": "Enabled",
+                "customDomains": [
+                  {
+                    "id": "[resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv')))]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv')))]",
+                "[resourceId('Microsoft.Cdn/profiles/afdEndpoints', format('afd-rac-{0}', parameters('racEnv')), format('afd-endpoint-{0}', parameters('racEnv')))]",
+                "[resourceId('Microsoft.Cdn/profiles/originGroups', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Cdn/profiles/customDomains",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv')))]",
+              "properties": {
+                "hostName": "[format('*.{0}', parameters('parentDomain'))]",
+                "tlsSettings": {
+                  "certificateType": "ManagedCertificate",
+                  "minimumTlsVersion": "TLS12"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/FrontDoorWebApplicationFirewallPolicies",
+              "apiVersion": "2022-05-01",
+              "name": "[format('waf-rac-{0}', parameters('racEnv'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "policySettings": {
+                  "enabledState": "Enabled",
+                  "mode": "Prevention"
+                },
+                "managedRules": {
+                  "managedRuleSets": [
+                    {
+                      "ruleSetType": "Microsoft_DefaultRuleSet",
+                      "ruleSetVersion": "2.1"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Cdn/profiles/securityPolicies",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', format('afd-rac-{0}', parameters('racEnv')), format('secpol-{0}', parameters('racEnv')))]",
+              "properties": {
+                "parameters": {
+                  "type": "WebApplicationFirewall",
+                  "wafPolicy": {
+                    "id": "[resourceId('Microsoft.Network/FrontDoorWebApplicationFirewallPolicies', format('waf-rac-{0}', parameters('racEnv')))]"
+                  },
+                  "associations": [
+                    {
+                      "domains": [
+                        {
+                          "id": "[resourceId('Microsoft.Cdn/profiles/afdEndpoints', format('afd-rac-{0}', parameters('racEnv')), format('afd-endpoint-{0}', parameters('racEnv')))]"
+                        }
+                      ],
+                      "patternsToMatch": [
+                        "/*"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Cdn/profiles/afdEndpoints', format('afd-rac-{0}', parameters('racEnv')), format('afd-endpoint-{0}', parameters('racEnv')))]",
+                "[resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv')))]",
+                "[resourceId('Microsoft.Network/FrontDoorWebApplicationFirewallPolicies', format('waf-rac-{0}', parameters('racEnv')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "frontDoorProfileId": {
+              "type": "string",
+              "metadata": {
+                "description": "Front Door Profile resource ID"
+              },
+              "value": "[resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv')))]"
+            },
+            "frontDoorEndpointHostname": {
+              "type": "string",
+              "metadata": {
+                "description": "Front Door endpoint hostname"
+              },
+              "value": "[reference(resourceId('Microsoft.Cdn/profiles/afdEndpoints', format('afd-rac-{0}', parameters('racEnv')), format('afd-endpoint-{0}', parameters('racEnv'))), '2023-05-01').hostName]"
+            },
+            "wafPolicyId": {
+              "type": "string",
+              "metadata": {
+                "description": "WAF Policy resource ID"
+              },
+              "value": "[resourceId('Microsoft.Network/FrontDoorWebApplicationFirewallPolicies', format('waf-rac-{0}', parameters('racEnv')))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "appGateway",
+        "rg"
+      ]
+    },
+    "managedIdentity": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-managedidentity",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "8507450378847529908"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "RAC deployment environment (dev, staging, prod)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags applied to all resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-07-31-preview",
+              "name": "[format('id-rac-controlplane-{0}', parameters('racEnv'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-07-31-preview",
+              "name": "[format('id-rac-shim-{0}', parameters('racEnv'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]"
+            }
+          ],
+          "outputs": {
+            "controlPlaneMiResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Control Plane managed identity resource ID"
+              },
+              "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-controlplane-{0}', parameters('racEnv')))]"
+            },
+            "controlPlaneMiPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Control Plane managed identity principal ID"
+              },
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-controlplane-{0}', parameters('racEnv'))), '2023-07-31-preview').principalId]"
+            },
+            "controlPlaneMiClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "Control Plane managed identity client ID"
+              },
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-controlplane-{0}', parameters('racEnv'))), '2023-07-31-preview').clientId]"
+            },
+            "shimMiResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Shim managed identity resource ID"
+              },
+              "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-shim-{0}', parameters('racEnv')))]"
+            },
+            "shimMiPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Shim managed identity principal ID"
+              },
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-shim-{0}', parameters('racEnv'))), '2023-07-31-preview').principalId]"
+            },
+            "shimMiClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "Shim managed identity client ID"
+              },
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-rac-shim-{0}', parameters('racEnv'))), '2023-07-31-preview').clientId]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "rg"
+      ]
+    },
+    "alerts": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-alerts",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "actionGroupEmails": {
+            "value": "[parameters('actionGroupEmails')]"
+          },
+          "actionGroupWebhookUri": {
+            "value": "[parameters('actionGroupWebhookUri')]"
+          },
+          "shimAppId": {
+            "value": "[parameters('shimAppId')]"
+          },
+          "controlPlaneAppId": {
+            "value": "[parameters('controlPlaneAppId')]"
+          },
+          "postgresServerId": {
+            "value": "[reference('postgres').outputs.serverId.value]"
+          },
+          "kvId": {
+            "value": "[reference('keyVault').outputs.kvId.value]"
+          },
+          "logAnalyticsWorkspaceId": {
+            "value": "[reference('logAnalytics').outputs.workspaceId.value]"
+          },
+          "pipelineTimeoutMinutes": {
+            "value": "[parameters('pipelineTimeoutMinutes')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "14300080692280396717"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "RAC deployment environment (dev, staging, prod)"
+              }
+            },
+            "actionGroupEmails": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Email addresses for alert action group (comma-separated)"
+              }
+            },
+            "actionGroupWebhookUri": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Webhook URI for alert action group (optional)"
+              }
+            },
+            "shimAppId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Shim ACA app resource ID (empty on first deploy)"
+              }
+            },
+            "controlPlaneAppId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Control Plane ACA app resource ID (empty on first deploy)"
+              }
+            },
+            "postgresServerId": {
+              "type": "string",
+              "metadata": {
+                "description": "Postgres Flexible Server resource ID"
+              }
+            },
+            "kvId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault resource ID"
+              }
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics workspace resource ID"
+              }
+            },
+            "pipelineTimeoutMinutes": {
+              "type": "int",
+              "defaultValue": 120,
+              "metadata": {
+                "description": "Pipeline timeout in minutes (used for stuck-pipeline alert threshold)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags applied to all resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/actionGroups",
+              "apiVersion": "2023-01-01",
+              "name": "[format('ag-rac-{0}', parameters('racEnv'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "copy": [
+                  {
+                    "name": "emailReceivers",
+                    "count": "[length(parameters('actionGroupEmails'))]",
+                    "input": {
+                      "name": "[format('email-{0}', copyIndex('emailReceivers'))]",
+                      "emailAddress": "[parameters('actionGroupEmails')[copyIndex('emailReceivers')]]",
+                      "useCommonAlertSchema": true
+                    }
+                  }
+                ],
+                "groupShortName": "[format('rac-{0}', parameters('racEnv'))]",
+                "enabled": true,
+                "webhookReceivers": "[if(not(empty(parameters('actionGroupWebhookUri'))), createArray(createObject('name', 'webhook-receiver', 'objectId', null(), 'serviceUri', parameters('actionGroupWebhookUri'), 'useCommonAlertSchema', true())), createArray())]"
+              }
+            },
+            {
+              "condition": "[not(empty(parameters('shimAppId')))]",
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "[format('alert-shim-5xx-{0}', parameters('racEnv'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Shim application 5xx error rate > 1% over 5 minutes",
+                "enabled": true,
+                "severity": 1,
+                "scopes": [
+                  "[parameters('shimAppId')]"
+                ],
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT5M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "name": "5xx-rate",
+                      "metricName": "Requests",
+                      "metricNamespace": "Microsoft.App/containerApps",
+                      "operator": "GreaterThan",
+                      "threshold": 1,
+                      "timeAggregation": "Total",
+                      "dimensions": [
+                        {
+                          "name": "statusCodeCategory",
+                          "operator": "Include",
+                          "values": [
+                            "5xx"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "total-requests",
+                      "metricName": "Requests",
+                      "metricNamespace": "Microsoft.App/containerApps",
+                      "operator": "GreaterThan",
+                      "threshold": 100,
+                      "timeAggregation": "Total"
+                    }
+                  ]
+                },
+                "actions": [
+                  {
+                    "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]",
+                    "webHookProperties": {}
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "condition": "[not(empty(parameters('controlPlaneAppId')))]",
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "[format('alert-controlplane-5xx-{0}', parameters('racEnv'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Control Plane application 5xx error rate > 1% over 5 minutes",
+                "enabled": true,
+                "severity": 1,
+                "scopes": [
+                  "[parameters('controlPlaneAppId')]"
+                ],
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT5M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "name": "5xx-rate",
+                      "metricName": "Requests",
+                      "metricNamespace": "Microsoft.App/containerApps",
+                      "operator": "GreaterThan",
+                      "threshold": 1,
+                      "timeAggregation": "Total",
+                      "dimensions": [
+                        {
+                          "name": "statusCodeCategory",
+                          "operator": "Include",
+                          "values": [
+                            "5xx"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "total-requests",
+                      "metricName": "Requests",
+                      "metricNamespace": "Microsoft.App/containerApps",
+                      "operator": "GreaterThan",
+                      "threshold": 100,
+                      "timeAggregation": "Total"
+                    }
+                  ]
+                },
+                "actions": [
+                  {
+                    "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]",
+                    "webHookProperties": {}
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "[format('alert-postgres-connection-failures-{0}', parameters('racEnv'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Postgres connection failures > 0 over 5 minutes",
+                "enabled": true,
+                "severity": 1,
+                "scopes": [
+                  "[parameters('postgresServerId')]"
+                ],
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT5M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "name": "connection-failures",
+                      "metricName": "connections_failed",
+                      "metricNamespace": "Microsoft.DBforPostgreSQL/flexibleServers",
+                      "operator": "GreaterThan",
+                      "threshold": 0,
+                      "timeAggregation": "Total"
+                    }
+                  ]
+                },
+                "actions": [
+                  {
+                    "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]",
+                    "webHookProperties": {}
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "[format('alert-keyvault-access-denied-{0}', parameters('racEnv'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Key Vault access denied errors > 0 over 5 minutes",
+                "enabled": true,
+                "severity": 1,
+                "scopes": [
+                  "[parameters('kvId')]"
+                ],
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT5M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "name": "access-denied",
+                      "metricName": "ServiceApiResult",
+                      "metricNamespace": "Microsoft.KeyVault/vaults",
+                      "operator": "GreaterThan",
+                      "threshold": 0,
+                      "timeAggregation": "Total",
+                      "dimensions": [
+                        {
+                          "name": "ResultType",
+                          "operator": "Include",
+                          "values": [
+                            "Forbidden"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "actions": [
+                  {
+                    "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]",
+                    "webHookProperties": {}
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Insights/scheduledQueryRules",
+              "apiVersion": "2023-03-15-preview",
+              "name": "[format('alert-pipeline-stuck-{0}', parameters('racEnv'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Pipeline workflow stuck > 2x timeout without terminal verdict",
+                "enabled": true,
+                "severity": 2,
+                "scopes": [
+                  "[parameters('logAnalyticsWorkspaceId')]"
+                ],
+                "evaluationFrequency": "PT5M",
+                "windowSize": "[format('PT{0}M', mul(2, parameters('pipelineTimeoutMinutes')))]",
+                "criteria": {
+                  "allOf": [
+                    {
+                      "query": "          // Placeholder query: identifies pipeline submissions without terminal verdict\n          // Phase 3 will provide actual structured log query\n          RAC_PipelineLog_CL\n          | where event_type == \"pipeline_started\"\n          | where not (event_type == \"pipeline_verdict\")\n          | summarize count()\n          ",
+                      "timeAggregation": "Count",
+                      "operator": "GreaterThan",
+                      "threshold": 0,
+                      "failingPeriods": {
+                        "numberOfEvaluationPeriods": 1,
+                        "minFailingPeriodsToAlert": 1
+                      }
+                    }
+                  ]
+                },
+                "actions": [
+                  {
+                    "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "actionGroupId": {
+              "type": "string",
+              "metadata": {
+                "description": "Action Group resource ID"
+              },
+              "value": "[resourceId('Microsoft.Insights/actionGroups', format('ag-rac-{0}', parameters('racEnv')))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "keyVault",
+        "logAnalytics",
+        "postgres",
+        "rg"
+      ]
+    },
+    "eventHub": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-eventhub",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "logAnalyticsWorkspaceId": {
+            "value": "[reference('logAnalytics').outputs.workspaceId.value]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "4880570899844040401"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "RAC deployment environment (dev, staging, prod)"
+              }
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics workspace resource ID"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags applied to all resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.EventHub/namespaces",
+              "apiVersion": "2024-01-01",
+              "name": "[format('evhns-rac-{0}', parameters('racEnv'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "Standard",
+                "tier": "Standard",
+                "capacity": 1
+              },
+              "properties": {
+                "minimumTlsVersion": "1.2",
+                "publicNetworkAccess": "Enabled",
+                "zoneRedundant": false
+              }
+            },
+            {
+              "type": "Microsoft.EventHub/namespaces/eventhubs",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', format('evhns-rac-{0}', parameters('racEnv')), 'eh-rac-access-logs')]",
+              "properties": {
+                "messageRetentionInDays": 1,
+                "partitionCount": 1
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.EventHub/namespaces/eventhubs",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', format('evhns-rac-{0}', parameters('racEnv')), 'eh-rac-approval-events')]",
+              "properties": {
+                "messageRetentionInDays": 1,
+                "partitionCount": 1
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.EventHub/namespaces/authorizationRules",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', format('evhns-rac-{0}', parameters('racEnv')), 'rac-siem-listener')]",
+              "properties": {
+                "rights": [
+                  "Listen"
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.OperationalInsights/workspaces/dataExports",
+              "apiVersion": "2020-08-01",
+              "name": "[format('{0}/dataexport-accesslogs-{1}', last(split(parameters('logAnalyticsWorkspaceId'), '/')), parameters('racEnv'))]",
+              "properties": {
+                "destination": {
+                  "resourceId": "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]",
+                  "metaData": {
+                    "eventHubName": "eh-rac-access-logs"
+                  }
+                },
+                "tableNames": [
+                  "RAC_AccessLog_CL"
+                ],
+                "enable": true
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.EventHub/namespaces/eventhubs', format('evhns-rac-{0}', parameters('racEnv')), 'eh-rac-access-logs')]",
+                "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.OperationalInsights/workspaces/dataExports",
+              "apiVersion": "2020-08-01",
+              "name": "[format('{0}/dataexport-approval-{1}', last(split(parameters('logAnalyticsWorkspaceId'), '/')), parameters('racEnv'))]",
+              "properties": {
+                "destination": {
+                  "resourceId": "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]",
+                  "metaData": {
+                    "eventHubName": "eh-rac-approval-events"
+                  }
+                },
+                "tableNames": [
+                  "RAC_ApprovalEvent_CL"
+                ],
+                "enable": true
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.EventHub/namespaces/eventhubs', format('evhns-rac-{0}', parameters('racEnv')), 'eh-rac-approval-events')]",
+                "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "eventHubNamespaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Event Hub Namespace resource ID"
+              },
+              "value": "[resourceId('Microsoft.EventHub/namespaces', format('evhns-rac-{0}', parameters('racEnv')))]"
+            },
+            "accessLogsEventHubId": {
+              "type": "string",
+              "metadata": {
+                "description": "Access Logs Event Hub resource ID"
+              },
+              "value": "[resourceId('Microsoft.EventHub/namespaces/eventhubs', format('evhns-rac-{0}', parameters('racEnv')), 'eh-rac-access-logs')]"
+            },
+            "approvalEventsEventHubId": {
+              "type": "string",
+              "metadata": {
+                "description": "Approval Events Event Hub resource ID"
+              },
+              "value": "[resourceId('Microsoft.EventHub/namespaces/eventhubs', format('evhns-rac-{0}', parameters('racEnv')), 'eh-rac-approval-events')]"
+            },
+            "listenerConnectionStringSecretRef": {
+              "type": "string",
+              "metadata": {
+                "description": "Listener authorization rule connection string secret reference for Key Vault"
+              },
+              "value": "[format('eh-listener-connstring-{0}', parameters('racEnv'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "logAnalytics",
+        "rg"
+      ]
+    }
+  },
+  "outputs": {
+    "resourceGroupName": {
+      "type": "string",
+      "metadata": {
+        "description": "Tier 2 platform resource group name"
+      },
+      "value": "[format('rg-rac-{0}', parameters('racEnv'))]"
+    },
+    "tier3ResourceGroupName": {
+      "type": "string",
+      "metadata": {
+        "description": "Tier 3 dynamic apps resource group name"
+      },
+      "value": "[format('rg-rac-tier3-{0}', parameters('racEnv'))]"
+    },
+    "acrLoginServer": {
+      "type": "string",
+      "metadata": {
+        "description": "ACR login server"
+      },
+      "value": "[reference('acr').outputs.acrLoginServer.value]"
+    },
+    "keyVaultUri": {
+      "type": "string",
+      "metadata": {
+        "description": "Key Vault URI"
+      },
+      "value": "[reference('keyVault').outputs.kvUri.value]"
+    },
+    "acaEnvDefaultDomain": {
+      "type": "string",
+      "metadata": {
+        "description": "ACA environment default domain"
+      },
+      "value": "[reference('acaEnvironment').outputs.envDefaultDomain.value]"
+    },
+    "appGatewayPublicFqdn": {
+      "type": "string",
+      "metadata": {
+        "description": "App Gateway public FQDN"
+      },
+      "value": "[reference('appGateway').outputs.appGatewayPublicFqdn.value]"
+    },
+    "frontDoorEndpointHostname": {
+      "type": "string",
+      "metadata": {
+        "description": "Front Door endpoint hostname"
+      },
+      "value": "[reference('frontDoor').outputs.frontDoorEndpointHostname.value]"
+    },
+    "dnsZoneNameServers": {
+      "type": "array",
+      "metadata": {
+        "description": "DNS zone nameservers (for parent delegation)"
+      },
+      "value": "[reference('dnsZone').outputs.zoneNameServers.value]"
+    },
+    "controlPlaneMiPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "Control Plane managed identity principal ID"
+      },
+      "value": "[reference('managedIdentity').outputs.controlPlaneMiPrincipalId.value]"
+    },
+    "shimMiPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "Shim managed identity principal ID"
+      },
+      "value": "[reference('managedIdentity').outputs.shimMiPrincipalId.value]"
+    },
+    "eventHubNamespaceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Event Hub namespace resource ID"
+      },
+      "value": "[reference('eventHub').outputs.eventHubNamespaceId.value]"
+    }
+  }
+}
