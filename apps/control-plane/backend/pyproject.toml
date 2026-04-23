@@ -73,6 +73,9 @@ warn_return_any = true
 warn_unreachable = true
 no_implicit_reexport = true
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/rac_control_plane"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

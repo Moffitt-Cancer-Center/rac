@@ -11,14 +11,14 @@ FROM node:20-alpine AS fe-builder
 WORKDIR /app/frontend
 
 # Copy package manifests
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+COPY apps/control-plane/frontend/package.json apps/control-plane/frontend/pnpm-lock.yaml ./
 
 # Install dependencies
 RUN npm install -g pnpm && \
     pnpm install --frozen-lockfile
 
 # Copy frontend source
-COPY frontend/ .
+COPY apps/control-plane/frontend/ .
 
 # Build SPA (outputs to dist/)
 RUN pnpm build
@@ -30,13 +30,14 @@ FROM python:3.12-slim AS be-builder
 
 WORKDIR /app
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install curl and uv
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/* && \
+    curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
 
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
-COPY backend/pyproject.toml backend/
+COPY apps/control-plane/backend/pyproject.toml apps/control-plane/backend/
 
 # Install dependencies (excluding dev dependencies)
 RUN uv sync --frozen --no-dev
@@ -52,7 +53,7 @@ WORKDIR /app
 COPY --from=be-builder /app/.venv /app/.venv
 
 # Copy backend source
-COPY backend/src /app/src
+COPY apps/control-plane/backend/src /app/src
 
 # Copy built frontend SPA from fe-builder
 COPY --from=fe-builder /app/frontend/dist /app/src/rac_control_plane/static
