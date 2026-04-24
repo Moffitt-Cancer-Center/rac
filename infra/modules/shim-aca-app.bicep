@@ -79,6 +79,15 @@ resource shimApp 'Microsoft.App/containerApps@2024-03-01' = {
     configuration: {
       // Internal ingress: App Gateway is the public boundary; the shim itself
       // does not need an external ingress endpoint.
+      //
+      // TOPOLOGY REQUIREMENT: because external=false, the shim's FQDN is only
+      // resolvable inside the VNet the ACA managed environment is deployed to.
+      // The Application Gateway (modules/app-gateway.bicep) backend pool points
+      // at this FQDN and therefore MUST be deployed in the same VNet (or one
+      // peered with DNS resolution). If the two live in different VNets without
+      // Private Link/peering, App Gateway backend health probes will fail and
+      // all traffic will return 502. This is verified operationally in the
+      // bootstrap runbook's post-deploy health-probe step.
       ingress: {
         external: false
         targetPort: 8080

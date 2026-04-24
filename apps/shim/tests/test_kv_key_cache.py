@@ -188,3 +188,26 @@ async def test_different_keys_independent() -> None:
 
     # The two cache entries are different ECKey objects.
     assert r_a1 is not r_b1
+
+
+@pytest.mark.asyncio
+async def test_private_key_material_rejected() -> None:
+    """Security regression guard: if Key Vault ever returns a key with `d`
+    (private scalar), _kv_key_to_eckey must raise ValueError rather than
+    silently loading it into the public-only cache. AC-cross-cutting: defense
+    in depth around JWT signing keys."""
+    eckey = ECKey.generate_key("P-256", auto_kid=True)
+    fake_kv_key = _make_fake_kv_key(eckey)
+    # Simulate a KV mis-configuration returning private material.
+    fake_kv_key.key.d = b"private_material_should_never_be_fetched"
+
+    client = AsyncMock()
+    client.get_key = AsyncMock(return_value=fake_kv_key)
+    cache = KeyVaultPublicKeyCache(
+        kv_uri="https://fake.vault.azure.net",
+        credential=MagicMock(),
+        client=client,
+    )
+
+    with pytest.raises(ValueError, match="(?i)private"):
+        await cache.get_jwk("some-key")

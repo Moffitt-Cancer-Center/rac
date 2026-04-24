@@ -364,9 +364,12 @@ def test_correlation_id_in_error_response() -> None:
     )
     assert resp.status_code == 403
     assert "Reference ID" in resp.text
-    corr_id = resp.headers.get("X-Correlation-Id", "")
-    if corr_id:
-        assert corr_id in resp.text
+    corr_id = resp.headers.get("X-Correlation-Id")
+    assert corr_id is not None, "X-Correlation-Id header missing from error response (AC12.2)"
+    assert corr_id in resp.text, (
+        f"correlation_id {corr_id!r} not rendered in error body — AC12.2 requires that "
+        "the Reference ID in the body matches the X-Correlation-Id header."
+    )
 
 
 def test_unknown_host_returns_404() -> None:

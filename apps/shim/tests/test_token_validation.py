@@ -130,6 +130,22 @@ def test_wrong_audience_app_a_vs_app_b(keypair: ECKey) -> None:
         )
 
 
+def test_wrong_audience_takes_priority_over_expired(keypair: ECKey) -> None:
+    """AC7.6 ordering guard: a wrong-audience token that is ALSO expired must
+    raise WrongAudience (checked first), not Expired. This ensures a refactor
+    cannot reorder the checks in a way that silently leaks which failure
+    reason is 'responsible'."""
+    token = _mint(keypair, aud="rac-app:app-a", exp=NOW_TS - 3600)
+    with pytest.raises(WrongAudience):
+        verify_signature_and_claims(
+            token,
+            public_key=keypair,
+            expected_issuer=ISSUER,
+            expected_audience="rac-app:app-b",
+            now=NOW,
+        )
+
+
 def test_malformed_garbage(keypair: ECKey) -> None:
     """AC7.4: completely invalid string raises Malformed."""
     with pytest.raises(Malformed):

@@ -33,17 +33,30 @@ from rac_shim.app_registry import AppRegistry
 from rac_shim.audit.access_record import RequestInfo, build_record
 from rac_shim.audit.batch_writer import AccessLogBatchWriter
 from rac_shim.cold_start.decision import decide as cold_start_decide
+from rac_shim.metrics import (
+    configure_metrics,
+    token_validation_counter,
+    wake_up_duration_histogram,
+)
 from rac_shim.proxy.forward import proxy_request
 from rac_shim.proxy.wake_up import wake as wake_upstream
 from rac_shim.routing.decision import AppRoute, route_for_host
 from rac_shim.token.cookie import build_cookie_header, extract_session_jti
 from rac_shim.token.denylist_cache import RevokedTokenDenylistCache
-from rac_shim.token.errors import Revoked, TokenInvalid
+from rac_shim.token.errors import Expired, Revoked, TokenInvalid
 from rac_shim.token.kv_key_cache import KeyVaultPublicKeyCache
 from rac_shim.token.validation import decode_unverified_header, verify_signature_and_claims
 from rac_shim.ui.render import ErrorContext, InterstitialContext, render_error, render_interstitial
 
 log: structlog.BoundLogger = structlog.get_logger(__name__)
+
+
+async def _wake_and_record(upstream_host: str, *, client: httpx.AsyncClient) -> None:
+    """Wake the upstream and record the wall-clock duration to the histogram.
+    Intended to be spawned via asyncio.create_task from the cold-start path."""
+    elapsed_ms = await wake_upstream(upstream_host, client=client)
+    if elapsed_ms is not None:
+        wake_up_duration_histogram.record(elapsed_ms)
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +179,7 @@ async def _handle(request: Request) -> Response:  # noqa: PLR0911, PLR0912
         )
         if cold.should_serve_interstitial:
             asyncio.create_task(
-                wake_upstream(route.upstream_host, client=deps.httpx_client),
+                _wake_and_record(route.upstream_host, client=deps.httpx_client),
                 name=f"wake_{route.slug}",
             )
             ictx = InterstitialContext(
@@ -226,6 +239,7 @@ async def _handle(request: Request) -> Response:  # noqa: PLR0911, PLR0912
             if await deps.denylist_cache.check(claims.jti):
                 raise Revoked("token is in revoked_token table")
 
+            token_validation_counter.add(1, {"result": "valid"})
             # Success: set cookie, redirect to clean URL
             cookie_header = build_cookie_header(
                 claims,
@@ -259,6 +273,14 @@ async def _handle(request: Request) -> Response:  # noqa: PLR0911, PLR0912
             )
 
         except TokenInvalid as exc:
+            # Emit metric labeled by validation outcome (AC10.2).
+            if isinstance(exc, Expired):
+                result_label = "expired"
+            elif isinstance(exc, Revoked):
+                result_label = "revoked"
+            else:
+                result_label = "malformed"
+            token_validation_counter.add(1, {"result": result_label})
             log.warning(
                 "token_invalid",
                 slug=route.slug,
@@ -339,7 +361,7 @@ async def _handle(request: Request) -> Response:  # noqa: PLR0911, PLR0912
 
     if cold.should_serve_interstitial:
         asyncio.create_task(
-            wake_upstream(route.upstream_host, client=deps.httpx_client),
+            _wake_and_record(route.upstream_host, client=deps.httpx_client),
             name=f"wake_{route.slug}",
         )
         ictx = InterstitialContext(
@@ -457,6 +479,16 @@ def create_app(deps: _Deps | None = None) -> Starlette:
 
         settings = get_settings()
         configure_logging()
+
+        if settings.metrics_enabled:
+            try:
+                configure_metrics(settings.otlp_endpoint)
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "otlp_export_unavailable_skipping",
+                    endpoint=settings.otlp_endpoint,
+                    error=str(exc),
+                )
 
         pool = await asyncpg.create_pool(settings.database_dsn, min_size=2, max_size=10)
         if pool is None:
