@@ -88,6 +88,27 @@ param controlPlaneImageName string = ''
 @maxValue(90)
 param kvSoftDeleteRetentionInDays int = 90
 
+@description('Shim container image reference (e.g. racdevacr001.azurecr.io/rac-shim:v1.0). Leave empty on first deploy — shim ACA app is skipped until the image is pushed.')
+param shimImageName string = ''
+
+@description('OIDC issuer URI for reviewer token validation (required when shimImageName is set)')
+param shimIssuer string = ''
+
+@description('Cookie domain for rac_session cookie (required when shimImageName is set, typically .{parentDomain})')
+param shimCookieDomain string = ''
+
+@description('Institution display name for shim branded pages')
+param shimInstitutionName string = ''
+
+@description('Optional institution brand logo URL for shim branded pages')
+param shimBrandLogoUrl string = ''
+
+@description('Enable shim OpenTelemetry/Prometheus metrics')
+param shimMetricsEnabled bool = true
+
+@description('OTLP exporter endpoint for the shim (leave empty to disable OTLP export)')
+param shimOtlpEndpoint string = ''
+
 // ========== VARIABLES ==========
 
 var commonTags = buildTags(racEnv, {})
@@ -232,6 +253,11 @@ module appGateway 'modules/app-gateway.bicep' = {
     parentDomain: parentDomain
     tlsCertKvSecretId: appGwTlsCertKvSecretId
     appGwMiResourceId: managedIdentity.outputs.appGwMiResourceId
+    // When the shim module ran on a previous deploy, the shim FQDN is available
+    // as an output.  Pass it here so the backend pool targets the shim.
+    // On first deploy (shimImageName empty) shimFqdn defaults to '' and the
+    // placeholder address is preserved in app-gateway.bicep.
+    shimFqdn: !empty(shimImageName) ? shimAcaApp.outputs.shimFqdn : ''
     tags: commonTags
   }
 }
@@ -337,6 +363,32 @@ module costIngestJob 'modules/cost-ingest-job.bicep' = if (!empty(controlPlaneIm
   }
 }
 
+// ========== PHASE 6: SHIM ACA APP ==========
+// Deploys only when shimImageName is provided (post-Phase-6 re-deploy).
+// The shim is the single public entry point; min-replicas=1 enforced in the module.
+module shimAcaApp 'modules/shim-aca-app.bicep' = if (!empty(shimImageName)) {
+  scope: rg
+  name: 'deploy-shim-aca-app'
+  params: {
+    location: location
+    racEnv: racEnv
+    managedEnvironmentId: acaEnvironment.outputs.envId
+    shimMiResourceId: managedIdentity.outputs.shimMiResourceId
+    imageName: shimImageName
+    registryServer: acr.outputs.acrLoginServer
+    kvUri: keyVault.outputs.kvUri
+    parentDomain: parentDomain
+    issuer: shimIssuer
+    cookieDomain: shimCookieDomain
+    acaInternalSuffix: acaEnvironment.outputs.envDefaultDomain
+    institutionName: shimInstitutionName
+    brandLogoUrl: shimBrandLogoUrl
+    metricsEnabled: shimMetricsEnabled
+    otlpEndpoint: shimOtlpEndpoint
+    tags: commonTags
+  }
+}
+
 module eventHub 'modules/event-hub.bicep' = {
   scope: rg
   name: 'deploy-eventhub'
@@ -382,3 +434,9 @@ output shimMiPrincipalId string = managedIdentity.outputs.shimMiPrincipalId
 
 @description('Event Hub namespace resource ID')
 output eventHubNamespaceId string = eventHub.outputs.eventHubNamespaceId
+
+@description('Shim ACA app resource ID (empty when shimImageName was not provided on this deploy)')
+output shimAppId string = !empty(shimImageName) ? shimAcaApp.outputs.shimAppId : ''
+
+@description('Shim ACA internal FQDN (empty when shimImageName was not provided on this deploy)')
+output shimFqdn string = !empty(shimImageName) ? shimAcaApp.outputs.shimFqdn : ''

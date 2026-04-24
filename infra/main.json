@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "7012244318538524786"
+      "templateHash": "2336674282634880114"
     }
   },
   "functions": [
@@ -209,6 +209,55 @@
       "maxValue": 90,
       "metadata": {
         "description": "Key Vault soft-delete retention in days (7 for dev, 90 for staging/prod)"
+      }
+    },
+    "shimImageName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Shim container image reference (e.g. racdevacr001.azurecr.io/rac-shim:v1.0). Leave empty on first deploy — shim ACA app is skipped until the image is pushed."
+      }
+    },
+    "shimIssuer": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "OIDC issuer URI for reviewer token validation (required when shimImageName is set)"
+      }
+    },
+    "shimCookieDomain": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Cookie domain for rac_session cookie (required when shimImageName is set, typically .{parentDomain})"
+      }
+    },
+    "shimInstitutionName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Institution display name for shim branded pages"
+      }
+    },
+    "shimBrandLogoUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional institution brand logo URL for shim branded pages"
+      }
+    },
+    "shimMetricsEnabled": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable shim OpenTelemetry/Prometheus metrics"
+      }
+    },
+    "shimOtlpEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "OTLP exporter endpoint for the shim (leave empty to disable OTLP export)"
       }
     }
   },
@@ -1898,6 +1947,7 @@
           "appGwMiResourceId": {
             "value": "[reference('managedIdentity').outputs.appGwMiResourceId.value]"
           },
+          "shimFqdn": "[if(not(empty(parameters('shimImageName'))), createObject('value', reference('shimAcaApp').outputs.shimFqdn.value), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -1909,7 +1959,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "7560816677529751929"
+              "templateHash": "16494876589695193689"
             }
           },
           "parameters": {
@@ -1953,6 +2003,13 @@
               "type": "string",
               "metadata": {
                 "description": "App Gateway managed identity resource ID"
+              }
+            },
+            "shimFqdn": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Shim internal FQDN to use as the backend pool target (e.g. rac-shim-dev.internal.xxx.azurecontainerapps.io). Leave empty on first deploy — the placeholder FQDN is preserved until the shim ACA app is deployed."
               }
             },
             "tags": {
@@ -2066,7 +2123,7 @@
                     "properties": {
                       "backendAddresses": [
                         {
-                          "fqdn": "shim.internal.eastus.azurecontainerapps.io"
+                          "fqdn": "[if(empty(parameters('shimFqdn')), 'shim.internal.eastus.azurecontainerapps.io', parameters('shimFqdn'))]"
                         }
                       ]
                     }
@@ -2171,7 +2228,8 @@
       "dependsOn": [
         "managedIdentity",
         "network",
-        "rg"
+        "rg",
+        "shimAcaApp"
       ]
     },
     "frontDoor": {
@@ -3671,6 +3729,288 @@
         "rg"
       ]
     },
+    "shimAcaApp": {
+      "condition": "[not(empty(parameters('shimImageName')))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-shim-aca-app",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "managedEnvironmentId": {
+            "value": "[reference('acaEnvironment').outputs.envId.value]"
+          },
+          "shimMiResourceId": {
+            "value": "[reference('managedIdentity').outputs.shimMiResourceId.value]"
+          },
+          "imageName": {
+            "value": "[parameters('shimImageName')]"
+          },
+          "registryServer": {
+            "value": "[reference('acr').outputs.acrLoginServer.value]"
+          },
+          "kvUri": {
+            "value": "[reference('keyVault').outputs.kvUri.value]"
+          },
+          "parentDomain": {
+            "value": "[parameters('parentDomain')]"
+          },
+          "issuer": {
+            "value": "[parameters('shimIssuer')]"
+          },
+          "cookieDomain": {
+            "value": "[parameters('shimCookieDomain')]"
+          },
+          "acaInternalSuffix": {
+            "value": "[reference('acaEnvironment').outputs.envDefaultDomain.value]"
+          },
+          "institutionName": {
+            "value": "[parameters('shimInstitutionName')]"
+          },
+          "brandLogoUrl": {
+            "value": "[parameters('shimBrandLogoUrl')]"
+          },
+          "metricsEnabled": {
+            "value": "[parameters('shimMetricsEnabled')]"
+          },
+          "otlpEndpoint": {
+            "value": "[parameters('shimOtlpEndpoint')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "12168537418106820014"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the app resource"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "Deployment environment: dev | staging | prod"
+              }
+            },
+            "managedEnvironmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA managed environment resource ID"
+              }
+            },
+            "shimMiResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Shim user-assigned managed identity resource ID (provisioned in Phase 1 managed-identity.bicep)"
+              }
+            },
+            "imageName": {
+              "type": "string",
+              "metadata": {
+                "description": "Full image reference, e.g. racdevacr001.azurecr.io/rac-shim:v1.0"
+              }
+            },
+            "registryServer": {
+              "type": "string",
+              "metadata": {
+                "description": "ACR login server, e.g. racdevacr001.azurecr.io"
+              }
+            },
+            "databaseDsnSecretName": {
+              "type": "string",
+              "defaultValue": "shim-database-dsn",
+              "metadata": {
+                "description": "Name of the Key Vault secret holding the shim database DSN (full DSN with password embedded)"
+              }
+            },
+            "cookieHmacSecretName": {
+              "type": "string",
+              "defaultValue": "shim-cookie-hmac",
+              "metadata": {
+                "description": "Name of the Key Vault secret holding the cookie HMAC secret"
+              }
+            },
+            "kvUri": {
+              "type": "string",
+              "metadata": {
+                "description": "Platform Key Vault URI, e.g. https://kv-rac-xxxx-dev.vault.azure.net/"
+              }
+            },
+            "parentDomain": {
+              "type": "string",
+              "metadata": {
+                "description": "Parent DNS domain, e.g. rac.moffitt.org"
+              }
+            },
+            "issuer": {
+              "type": "string",
+              "metadata": {
+                "description": "OIDC issuer URI for reviewer token validation"
+              }
+            },
+            "cookieDomain": {
+              "type": "string",
+              "metadata": {
+                "description": "Cookie domain for rac_session HttpOnly cookie (typically .{parentDomain})"
+              }
+            },
+            "acaInternalSuffix": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA internal suffix, e.g. internal.xxxxxxxx.eastus.azurecontainerapps.io"
+              }
+            },
+            "institutionName": {
+              "type": "string",
+              "metadata": {
+                "description": "Institution display name shown in branded error pages"
+              }
+            },
+            "brandLogoUrl": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Optional institution brand logo URL shown in interstitial and error pages"
+              }
+            },
+            "metricsEnabled": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Enable Prometheus/OpenTelemetry metrics endpoint"
+              }
+            },
+            "otlpEndpoint": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "OTLP exporter endpoint (leave empty to disable OTLP export; local Prometheus still works)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/containerApps",
+              "apiVersion": "2024-03-01",
+              "name": "[format('rac-shim-{0}', parameters('racEnv'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('shimMiResourceId'))]": {}
+                }
+              },
+              "properties": {
+                "environmentId": "[parameters('managedEnvironmentId')]",
+                "configuration": {
+                  "ingress": {
+                    "external": false,
+                    "targetPort": 8080,
+                    "transport": "http"
+                  },
+                  "registries": [
+                    {
+                      "server": "[parameters('registryServer')]",
+                      "identity": "[parameters('shimMiResourceId')]"
+                    }
+                  ],
+                  "secrets": [
+                    {
+                      "name": "[parameters('databaseDsnSecretName')]",
+                      "keyVaultUrl": "[format('{0}secrets/{1}', parameters('kvUri'), parameters('databaseDsnSecretName'))]",
+                      "identity": "[parameters('shimMiResourceId')]"
+                    },
+                    {
+                      "name": "[parameters('cookieHmacSecretName')]",
+                      "keyVaultUrl": "[format('{0}secrets/{1}', parameters('kvUri'), parameters('cookieHmacSecretName'))]",
+                      "identity": "[parameters('shimMiResourceId')]"
+                    }
+                  ]
+                },
+                "template": {
+                  "containers": [
+                    {
+                      "name": "shim",
+                      "image": "[parameters('imageName')]",
+                      "resources": {
+                        "cpu": "[json('0.5')]",
+                        "memory": "1Gi"
+                      },
+                      "env": "[concat(createArray(createObject('name', 'RAC_SHIM_DATABASE_DSN', 'secretRef', parameters('databaseDsnSecretName')), createObject('name', 'RAC_SHIM_COOKIE_HMAC_SECRET', 'secretRef', parameters('cookieHmacSecretName')), createObject('name', 'RAC_SHIM_KV_URI', 'value', parameters('kvUri')), createObject('name', 'RAC_SHIM_PARENT_DOMAIN', 'value', parameters('parentDomain')), createObject('name', 'RAC_SHIM_ISSUER', 'value', parameters('issuer')), createObject('name', 'RAC_SHIM_COOKIE_DOMAIN', 'value', parameters('cookieDomain')), createObject('name', 'RAC_SHIM_ACA_INTERNAL_SUFFIX', 'value', parameters('acaInternalSuffix')), createObject('name', 'RAC_SHIM_INSTITUTION_NAME', 'value', parameters('institutionName')), createObject('name', 'RAC_SHIM_BRAND_LOGO_URL', 'value', parameters('brandLogoUrl')), createObject('name', 'RAC_SHIM_ENV', 'value', parameters('racEnv')), createObject('name', 'RAC_SHIM_METRICS_ENABLED', 'value', string(parameters('metricsEnabled')))), if(empty(parameters('otlpEndpoint')), createArray(), createArray(createObject('name', 'RAC_SHIM_OTLP_ENDPOINT', 'value', parameters('otlpEndpoint')))))]"
+                    }
+                  ],
+                  "scale": {
+                    "minReplicas": 1,
+                    "maxReplicas": 5,
+                    "rules": [
+                      {
+                        "name": "http-scaler",
+                        "http": {
+                          "metadata": {
+                            "concurrentRequests": "100"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "shimAppId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the shim Container App"
+              },
+              "value": "[resourceId('Microsoft.App/containerApps', format('rac-shim-{0}', parameters('racEnv')))]"
+            },
+            "shimFqdn": {
+              "type": "string",
+              "metadata": {
+                "description": "Internal FQDN of the shim (used as App Gateway backend target)"
+              },
+              "value": "[reference(resourceId('Microsoft.App/containerApps', format('rac-shim-{0}', parameters('racEnv'))), '2024-03-01').configuration.ingress.fqdn]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "acaEnvironment",
+        "acr",
+        "keyVault",
+        "managedIdentity",
+        "rg"
+      ]
+    },
     "eventHub": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
@@ -3944,6 +4284,20 @@
         "description": "Event Hub namespace resource ID"
       },
       "value": "[reference('eventHub').outputs.eventHubNamespaceId.value]"
+    },
+    "shimAppId": {
+      "type": "string",
+      "metadata": {
+        "description": "Shim ACA app resource ID (empty when shimImageName was not provided on this deploy)"
+      },
+      "value": "[if(not(empty(parameters('shimImageName'))), reference('shimAcaApp').outputs.shimAppId.value, '')]"
+    },
+    "shimFqdn": {
+      "type": "string",
+      "metadata": {
+        "description": "Shim ACA internal FQDN (empty when shimImageName was not provided on this deploy)"
+      },
+      "value": "[if(not(empty(parameters('shimImageName'))), reference('shimAcaApp').outputs.shimFqdn.value, '')]"
     }
   }
 }
