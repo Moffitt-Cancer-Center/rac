@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SubmissionsIndexRouteImport } from './routes/submissions/index'
 import { Route as SubmissionsNewRouteImport } from './routes/submissions/new'
+import { Route as SubmissionsSubmissionIdRouteImport } from './routes/submissions/$submissionId'
+import { Route as AdminWebhookSubscriptionsRouteImport } from './routes/admin/webhook-subscriptions'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,33 +30,68 @@ const SubmissionsNewRoute = SubmissionsNewRouteImport.update({
   path: '/submissions/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SubmissionsSubmissionIdRoute = SubmissionsSubmissionIdRouteImport.update({
+  id: '/submissions/$submissionId',
+  path: '/submissions/$submissionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminWebhookSubscriptionsRoute =
+  AdminWebhookSubscriptionsRouteImport.update({
+    id: '/admin/webhook-subscriptions',
+    path: '/admin/webhook-subscriptions',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin/webhook-subscriptions': typeof AdminWebhookSubscriptionsRoute
+  '/submissions/$submissionId': typeof SubmissionsSubmissionIdRoute
   '/submissions/new': typeof SubmissionsNewRoute
   '/submissions/': typeof SubmissionsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin/webhook-subscriptions': typeof AdminWebhookSubscriptionsRoute
+  '/submissions/$submissionId': typeof SubmissionsSubmissionIdRoute
   '/submissions/new': typeof SubmissionsNewRoute
   '/submissions': typeof SubmissionsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin/webhook-subscriptions': typeof AdminWebhookSubscriptionsRoute
+  '/submissions/$submissionId': typeof SubmissionsSubmissionIdRoute
   '/submissions/new': typeof SubmissionsNewRoute
   '/submissions/': typeof SubmissionsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/submissions/new' | '/submissions/'
+  fullPaths:
+    | '/'
+    | '/admin/webhook-subscriptions'
+    | '/submissions/$submissionId'
+    | '/submissions/new'
+    | '/submissions/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/submissions/new' | '/submissions'
-  id: '__root__' | '/' | '/submissions/new' | '/submissions/'
+  to:
+    | '/'
+    | '/admin/webhook-subscriptions'
+    | '/submissions/$submissionId'
+    | '/submissions/new'
+    | '/submissions'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin/webhook-subscriptions'
+    | '/submissions/$submissionId'
+    | '/submissions/new'
+    | '/submissions/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminWebhookSubscriptionsRoute: typeof AdminWebhookSubscriptionsRoute
+  SubmissionsSubmissionIdRoute: typeof SubmissionsSubmissionIdRoute
   SubmissionsNewRoute: typeof SubmissionsNewRoute
   SubmissionsIndexRoute: typeof SubmissionsIndexRoute
 }
@@ -82,11 +119,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubmissionsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/submissions/$submissionId': {
+      id: '/submissions/$submissionId'
+      path: '/submissions/$submissionId'
+      fullPath: '/submissions/$submissionId'
+      preLoaderRoute: typeof SubmissionsSubmissionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/webhook-subscriptions': {
+      id: '/admin/webhook-subscriptions'
+      path: '/admin/webhook-subscriptions'
+      fullPath: '/admin/webhook-subscriptions'
+      preLoaderRoute: typeof AdminWebhookSubscriptionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminWebhookSubscriptionsRoute: AdminWebhookSubscriptionsRoute,
+  SubmissionsSubmissionIdRoute: SubmissionsSubmissionIdRoute,
   SubmissionsNewRoute: SubmissionsNewRoute,
   SubmissionsIndexRoute: SubmissionsIndexRoute,
 }

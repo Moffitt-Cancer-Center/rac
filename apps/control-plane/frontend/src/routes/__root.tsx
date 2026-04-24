@@ -20,6 +20,9 @@ function RootLayout() {
                 <a href="/submissions" className="hover:underline">
                   Submissions
                 </a>
+                <a href="/admin/webhook-subscriptions" className="hover:underline">
+                  Webhooks
+                </a>
               </nav>
             </div>
           </header>
