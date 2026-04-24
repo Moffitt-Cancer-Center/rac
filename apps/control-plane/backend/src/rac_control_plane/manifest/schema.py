@@ -1,6 +1,9 @@
+# pattern: Functional Core
 """rac_control_plane.manifest.schema — Pydantic v2 models for rac.yaml.
 
-Type-only module: no business logic, no I/O.
+Contains validators (sha256 format, unique asset names, unique mount paths)
+that run on every model instantiation. Functional Core: validators are pure
+functions of the input data with no I/O.
 """
 
 from __future__ import annotations

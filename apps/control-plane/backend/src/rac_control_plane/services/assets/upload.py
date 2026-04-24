@@ -15,11 +15,29 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from rac_control_plane.data.models import Asset
 from rac_control_plane.errors import ValidationApiError
 from rac_control_plane.services.assets.sha256_stream import astream_sha256
+
+logger = structlog.get_logger(__name__)
+
+
+def _safe_delete_blob(blob_client: Any, asset_name: str) -> None:
+    """Idempotent blob delete: swallow exceptions from an already-gone blob or
+    concurrent delete. We still raise the caller's integrity error afterward;
+    the blob cleanup is best-effort. Prevents a retried /finalize from 500'ing
+    when the first call already deleted the mismatching blob."""
+    try:
+        blob_client.delete_blob()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "delete_blob_failed_during_mismatch_cleanup",
+            asset_name=asset_name,
+            error=str(exc),
+        )
 
 
 async def finalize_upload(
@@ -91,8 +109,7 @@ async def finalize_upload(
 
     # Verify sha256 (case-insensitive — hex digits only)
     if computed_sha256.lower() != declared_sha256.lower():
-        # Integrity failure: delete the offending blob and refuse
-        blob_client.delete_blob()
+        _safe_delete_blob(blob_client, asset_name)
         raise ValidationApiError(
             code="sha256_mismatch",
             public_message=(
@@ -103,7 +120,7 @@ async def finalize_upload(
 
     # Verify size (optional cross-check)
     if declared_size_bytes is not None and computed_size != declared_size_bytes:
-        blob_client.delete_blob()
+        _safe_delete_blob(blob_client, asset_name)
         raise ValidationApiError(
             code="size_mismatch",
             public_message=(
