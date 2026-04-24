@@ -165,9 +165,11 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                     resp_headers["x-idempotent-replay"] = "true"
                     response_body_bytes = existing.response_body.encode("utf-8")
 
+                    # AC3.2: replay always returns HTTP 200 (not the original status)
+                    # to signal a deduplicated response vs. a new creation (201).
                     return Response(
                         content=response_body_bytes,
-                        status_code=existing.response_status,
+                        status_code=200,
                         headers=resp_headers,
                         media_type=resp_headers.get("content-type", "application/json"),
                     )

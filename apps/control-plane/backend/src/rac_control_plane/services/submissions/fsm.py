@@ -46,14 +46,17 @@ TransitionEvent = (
 class InvalidTransitionError(ApiError):
     """Raised when an invalid FSM transition is attempted."""
 
+    __slots__ = ("current", "event")
+
     def __init__(self, current: SubmissionStatus, event: TransitionEvent) -> None:
         super().__init__(
             code="invalid_transition",
             http_status=400,
             public_message=f"Cannot transition from {current} via {event}",
         )
-        self.current = current
-        self.event = event
+        # Use object.__setattr__ because ApiError.__setattr__ guards application fields
+        object.__setattr__(self, "current", current)
+        object.__setattr__(self, "event", event)
 
 
 # State transition table: maps (current_state, event) -> new_state

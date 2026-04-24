@@ -67,7 +67,7 @@ class Submission(Base):
     )
     slug: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     status: Mapped[SubmissionStatus] = mapped_column(
-        Enum(SubmissionStatus, native_enum=True, create_type=True),
+        Enum(SubmissionStatus, name="submission_status", native_enum=True, create_type=False),
         nullable=False,
         index=True,
         default=SubmissionStatus.awaiting_scan,
