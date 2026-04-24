@@ -88,6 +88,11 @@ async def app(monkeypatch, migrated_db, mock_oidc):
         "RAC_APPROVER_ROLE_RESEARCH": "research_approver",
         "RAC_APPROVER_ROLE_IT": "it_approver",
         "RAC_OTLP_ENDPOINT": "http://localhost:4317",
+        # Pipeline dispatch settings (test values — no real GitHub calls)
+        "RAC_GH_PIPELINE_OWNER": "test-org",
+        "RAC_GH_PIPELINE_REPO": "rac-pipeline",
+        "RAC_GH_PAT": "ghp_test_token",
+        "RAC_CALLBACK_BASE_URL": "http://test",
     }
 
     for key, value in test_env.items():

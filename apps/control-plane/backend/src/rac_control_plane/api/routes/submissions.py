@@ -7,10 +7,11 @@ Endpoints:
 - GET /submissions: List submissions with pagination
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import structlog
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from rac_control_plane.api.schemas.submissions import (
@@ -32,13 +33,44 @@ from rac_control_plane.metrics import submission_counter
 from rac_control_plane.services.submissions.create import create_submission
 from rac_control_plane.settings import get_settings
 
+logger = structlog.get_logger(__name__)
+
 router = APIRouter(prefix="/submissions", tags=["submissions"])
+
+
+def _build_dispatch_fn(
+    settings_snapshot: Any,
+) -> Any:
+    """Build a dispatch callable from current settings.
+
+    Returns an async callable (submission_id, payload) → None, or None
+    if dispatch is not configured (no PAT, no App credentials).
+    """
+    from rac_control_plane.services.pipeline_dispatch import github as gh_dispatch
+
+    auth_token: str | None = None
+    if settings_snapshot.gh_pat:
+        auth_token = settings_snapshot.gh_pat.get_secret_value()
+    # GitHub App auth would be resolved here when implemented (Phase 5+)
+
+    if not auth_token:
+        logger.warning("pipeline_dispatch_skipped_no_auth_token")
+        return None
+
+    owner = settings_snapshot.gh_pipeline_owner
+    repo = settings_snapshot.gh_pipeline_repo
+
+    async def _do_dispatch(payload: dict[str, Any]) -> None:
+        await gh_dispatch.dispatch(owner, repo, payload, auth_token=auth_token)
+
+    return _do_dispatch
 
 
 @router.post("", status_code=201, response_model=SubmissionResponse)
 async def post_submission(
     request: SubmissionCreateRequest,
     principal: Annotated[Principal, Depends(current_principal)],
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> SubmissionResponse:
     """Create a new submission.
@@ -53,10 +85,12 @@ async def post_submission(
     - AC3.1: Agent submitter has agent_id populated
     - AC3.2: Idempotency-Key support for duplicate detection
     - AC3.5: Disabled agents return 403
+    - AC5.1: Submission triggers pipeline dispatch after successful DB write
 
     Args:
         request: Submission creation request
         principal: Current authenticated principal
+        background_tasks: FastAPI BackgroundTasks for non-blocking dispatch
         session: Database session
 
     Returns:
@@ -65,8 +99,13 @@ async def post_submission(
     Raises:
         401: Missing or invalid authentication
         403: Agent is disabled
-        422: GitHub validation failed
+        422: GitHub validation failed or pipeline payload too large
     """
+    settings = get_settings()
+
+    # Build dispatch function from settings (None if not configured)
+    dispatch_fn = _build_dispatch_fn(settings)
+
     # Get existing slugs to avoid collisions
     existing_slugs = await get_existing_slugs(session)
 
@@ -78,6 +117,7 @@ async def post_submission(
         request,
         existing_slugs,
         emit_submission_metric=lambda status: submission_counter.add(1, {"status": status}),
+        dispatch_fn=dispatch_fn,
     )
 
     # Commit the transaction

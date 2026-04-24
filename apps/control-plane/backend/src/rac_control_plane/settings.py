@@ -44,6 +44,17 @@ class Settings(BaseSettings):
     # Webhook settings
     webhook_secret_rotation_days: int = 30
 
+    # GitHub pipeline dispatch settings
+    gh_pipeline_owner: str = ""
+    gh_pipeline_repo: str = "rac-pipeline"
+    gh_app_id: str | None = None
+    gh_app_private_key: SecretStr | None = None
+    gh_pat: SecretStr | None = None  # fallback for dev; prefer App auth in prod
+    pipeline_timeout_minutes: int = 120
+
+    # Callback URL — the Control Plane's own base URL that the pipeline POSTs back to
+    callback_base_url: str = ""
+
     # Observability
     otlp_endpoint: str = "http://localhost:4317"
     metrics_enabled: bool = False
