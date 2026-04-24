@@ -1,7 +1,7 @@
 # pattern: Functional Core
 
 
-class TokenInvalid(Exception):
+class TokenInvalid(Exception):  # noqa: N818
     """Base class. Subclasses carry `code` (stable string) and `internal_detail`
     (never shown to users — AC7.4)."""
 

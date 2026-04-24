@@ -1,8 +1,9 @@
 # pattern: Functional Core
 
 import base64
+import datetime as dt
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 from joserfc import jwt
@@ -33,7 +34,7 @@ def decode_unverified_header(token: str) -> dict[str, object]:
         # Add padding so standard base64 decode works
         padded = parts[0] + "=" * (-len(parts[0]) % 4)
         header_bytes = base64.urlsafe_b64decode(padded)
-        return dict(json.loads(header_bytes))  # type: ignore[arg-type]
+        return dict(json.loads(header_bytes))
     except Exception as exc:
         raise Malformed(f"Cannot decode JWT header: {exc}") from exc
 
@@ -88,7 +89,7 @@ def verify_signature_and_claims(
     exp_raw = claims.get("exp")
     if exp_raw is None:
         raise Malformed("Missing 'exp' claim")
-    exp_dt = datetime.fromtimestamp(int(exp_raw), tz=timezone.utc)
+    exp_dt = datetime.fromtimestamp(int(exp_raw), tz=dt.UTC)
     if exp_dt <= now:
         raise Expired(f"exp={exp_dt.isoformat()} now={now.isoformat()}")
 
@@ -96,7 +97,7 @@ def verify_signature_and_claims(
     nbf_dt: datetime | None = None
     nbf_raw = claims.get("nbf")
     if nbf_raw is not None:
-        nbf_dt = datetime.fromtimestamp(int(nbf_raw), tz=timezone.utc)
+        nbf_dt = datetime.fromtimestamp(int(nbf_raw), tz=dt.UTC)
         if nbf_dt > now:
             raise NotYetValid(f"nbf={nbf_dt.isoformat()} now={now.isoformat()}")
 
@@ -104,7 +105,7 @@ def verify_signature_and_claims(
     iat_raw = claims.get("iat")
     if iat_raw is None:
         raise Malformed("Missing 'iat' claim")
-    iat_dt = datetime.fromtimestamp(int(iat_raw), tz=timezone.utc)
+    iat_dt = datetime.fromtimestamp(int(iat_raw), tz=dt.UTC)
 
     jti_raw = claims.get("jti")
     if jti_raw is None:
