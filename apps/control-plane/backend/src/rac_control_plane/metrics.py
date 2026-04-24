@@ -60,3 +60,13 @@ scan_verdict_counter = _meter.create_counter(
     description="Scan pipeline verdicts by type.",
     unit="1",
 )
+
+# Detection error counter: incremented when the detection_fn raises an unhandled
+# exception inside create_submission.  The submission continues without detection.
+# Searchable in Log Analytics alongside the
+# "detection_raised_exception_continuing_without_detection" event.
+detection_error_counter = _meter.create_counter(
+    name="rac.detection.errors",
+    description="Count of detection_fn exceptions caught inside create_submission.",
+    unit="1",
+)
