@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from rac_control_plane.api.schemas.submissions import SubmissionCreateRequest
 from rac_control_plane.auth.principal import Principal
-from rac_control_plane.data.models import ApprovalEvent, DetectionFinding, Submission, SubmissionStatus
+from rac_control_plane.data.models import (
+    ApprovalEvent,
+    DetectionFinding,
+    Submission,
+    SubmissionStatus,
+)
 from rac_control_plane.errors import ValidationApiError
 from rac_control_plane.services.github_validation import validate_repo
 from rac_control_plane.services.submissions.slug import derive_slug
@@ -31,7 +36,9 @@ async def create_submission(
     *,
     emit_submission_metric: Callable[[str], None] | None = None,
     dispatch_fn: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
-    detection_fn: Callable[[AsyncSession, Submission], Awaitable[list[DetectionFinding]]] | None = None,
+    detection_fn: (
+        Callable[[AsyncSession, Submission], Awaitable[list[DetectionFinding]]] | None
+    ) = None,
 ) -> Submission:
     """Create a new submission with validation and persistence.
 
@@ -106,12 +113,15 @@ async def create_submission(
             await detection_fn(session, submission)
         except Exception as exc:
             # Detection failures are non-fatal for the submission itself;
-            # log the error but do not block the response.
+            # log the error with a distinct, searchable event name and increment
+            # the detection error counter for Log Analytics / Azure Monitor.
+            from rac_control_plane.metrics import detection_error_counter
             logger.error(
-                "detection_failed",
+                "detection_raised_exception_continuing_without_detection",
                 submission_id=str(submission.id),
-                error=str(exc),
+                exc_info=exc,
             )
+            detection_error_counter.add(1, {"rule": "unknown"})
 
     # Step 6: Emit metric for the new submission status (impure, optional)
     if emit_submission_metric:
@@ -123,7 +133,11 @@ async def create_submission(
     # (api/routes/submissions.py) is responsible for building that payload
     # and scheduling the call via BackgroundTasks so the HTTP response is
     # not blocked.  We expose the hook here so tests can inject a mock.
-    if dispatch_fn is not None:
+    #
+    # Guard: only dispatch when submission is still awaiting_scan.  If
+    # detection transitioned it to needs_user_action the pipeline must NOT
+    # launch until the researcher resolves the findings (Critical 2 fix).
+    if dispatch_fn is not None and submission.status == SubmissionStatus.awaiting_scan:
         # Build and invoke the dispatch payload inside the service so that
         # all dispatch logic is centralised.  The session has already been
         # flushed, so submission.id is available.
