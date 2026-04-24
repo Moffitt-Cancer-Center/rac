@@ -51,6 +51,10 @@ select = ["E", "F", "W", "I", "B", "UP", "N", "S"]
 python_version = "3.12"
 strict = true
 
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
