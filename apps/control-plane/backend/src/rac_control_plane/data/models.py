@@ -388,7 +388,13 @@ class RevokedToken(Base):
 
 
 class AccessLog(Base):
-    """Append-only: access audit trail."""
+    """Append-only: access audit trail.
+
+    Phase 2 columns: principal_id, reviewer_token_jti, submission_id, action.
+    Phase 7 (migration 0011) adds the full shim-written columns: app_id,
+    access_mode, host, method, upstream_status, latency_ms, user_agent,
+    source_ip, request_id.
+    """
     __tablename__ = "access_log"
 
     id: Mapped[UUID] = mapped_column(
@@ -396,6 +402,7 @@ class AccessLog(Base):
         primary_key=True,
         server_default=func.text("uuidv7()"),
     )
+    # Phase 2 columns (legacy — retained for backward compat)
     principal_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
     reviewer_token_jti: Mapped[str | None] = mapped_column(
         String(255),
@@ -415,6 +422,21 @@ class AccessLog(Base):
         server_default=func.now(),
         index=True,
     )
+    # Phase 7 columns (migration 0011) — written by the Shim via asyncpg COPY
+    app_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("app.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    access_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    method: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    upstream_status: Mapped[int | None] = mapped_column(nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    request_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
 
 
 class SigningKeyVersion(Base):

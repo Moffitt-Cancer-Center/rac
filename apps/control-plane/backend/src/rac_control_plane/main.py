@@ -8,6 +8,7 @@ from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from rac_control_plane.api.routes.access_log import router as access_log_router
 from rac_control_plane.api.routes.access_mode import router as access_mode_router
 from rac_control_plane.api.routes.agents import router as agents_router
 from rac_control_plane.api.routes.approvals import router as approvals_router
@@ -182,6 +183,7 @@ def create_app() -> FastAPI:
     app.include_router(cost_router, prefix="")
     app.include_router(tokens_router, prefix="")
     app.include_router(access_mode_router, prefix="")
+    app.include_router(access_log_router, prefix="")
 
     # Static file mount for React SPA (must be last)
     static_dir = Path(__file__).parent / "static"
