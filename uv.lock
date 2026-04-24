@@ -11,6 +11,7 @@ resolution-markers = [
 [manifest]
 members = [
     "rac-control-plane",
+    "rac-shim",
 ]
 
 [[package]]
@@ -733,6 +734,18 @@ wheels = [
 ]
 
 [[package]]
+name = "freezegun"
+version = "1.5.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/95/dd/23e2f4e357f8fd3bdff613c1fe4466d21bfb00a6177f238079b17f7b1c84/freezegun-1.5.5.tar.gz", hash = "sha256:ac7742a6cc6c25a2c35e9292dfd554b897b517d2dec26891a2e8debf205cb94a", size = 35914, upload-time = "2025-08-09T10:39:08.338Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5e/2e/b41d8a1a917d6581fc27a35d05561037b048e47df50f27f8ac9c7e27a710/freezegun-1.5.5-py3-none-any.whl", hash = "sha256:cd557f4a75cf074e84bc374249b9dd491eaeacd61376b9eb3c423282211619d2", size = 19266, upload-time = "2025-08-09T10:39:06.636Z" },
+]
+
+[[package]]
 name = "frozenlist"
 version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1105,6 +1118,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/54/4d/e940025e2ce31a8ce1202635910747e5a87cc3a6a6bb2d00973375014749/isodate-0.7.2.tar.gz", hash = "sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6", size = 29705, upload-time = "2024-10-08T23:04:11.5Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/15/aa/0aca39a37d3c7eb941ba736ede56d689e7be91cab5d9ca846bde3999eba6/isodate-0.7.2-py3-none-any.whl", hash = "sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15", size = 22320, upload-time = "2024-10-08T23:04:09.501Z" },
+]
+
+[[package]]
+name = "joserfc"
+version = "1.6.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/de/c6/de8fdbdfa75c8ca04fead38a82d573df8a82906e984c349d58665f459558/joserfc-1.6.4.tar.gz", hash = "sha256:34ce5f499bfcc5e9ad4cc75077f9278ab3227b71da9aaf28f9ab705f8a560d3c", size = 231866, upload-time = "2026-04-13T13:15:40.632Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b6/f7/210b27752e972edb36d239315b08d3eb6b14824cc4a590da2337d195260b/joserfc-1.6.4-py3-none-any.whl", hash = "sha256:3e4a22b509b41908989237a045e25c8308d5fd47ab96bdae2dd8057c6451003a", size = 70464, upload-time = "2026-04-13T13:15:39.259Z" },
 ]
 
 [[package]]
@@ -2250,6 +2275,67 @@ dev = [
     { name = "ruff" },
     { name = "testcontainers", extras = ["postgres"] },
     { name = "types-cachetools" },
+]
+
+[[package]]
+name = "rac-shim"
+version = "1.0.0"
+source = { editable = "apps/shim" }
+dependencies = [
+    { name = "asyncpg" },
+    { name = "azure-identity" },
+    { name = "azure-keyvault-keys" },
+    { name = "azure-keyvault-secrets" },
+    { name = "gunicorn" },
+    { name = "httpx" },
+    { name = "joserfc" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-sdk" },
+    { name = "pydantic-settings" },
+    { name = "starlette" },
+    { name = "structlog" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "freezegun" },
+    { name = "hypothesis" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "respx" },
+    { name = "ruff" },
+    { name = "testcontainers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "asyncpg", specifier = ">=0.29" },
+    { name = "azure-identity", specifier = ">=1.19" },
+    { name = "azure-keyvault-keys", specifier = ">=4.8" },
+    { name = "azure-keyvault-secrets", specifier = ">=4.8" },
+    { name = "gunicorn", specifier = ">=22.0" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "joserfc", specifier = ">=1.1" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.25" },
+    { name = "opentelemetry-sdk", specifier = ">=1.25" },
+    { name = "pydantic-settings", specifier = ">=2.4" },
+    { name = "starlette", specifier = ">=0.37" },
+    { name = "structlog", specifier = ">=24.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "freezegun", specifier = ">=1.5" },
+    { name = "hypothesis", specifier = ">=6.100" },
+    { name = "mypy", specifier = ">=1.11" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.23" },
+    { name = "respx", specifier = ">=0.21" },
+    { name = "ruff", specifier = ">=0.5" },
+    { name = "testcontainers", extras = ["postgres"], specifier = ">=4.0" },
 ]
 
 [[package]]

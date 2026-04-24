@@ -1,2 +1,2 @@
 [tool.uv.workspace]
-members = ["apps/control-plane/backend"]
+members = ["apps/control-plane/backend", "apps/shim"]
