@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     # Callback URL — the Control Plane's own base URL that the pipeline POSTs back to
     callback_base_url: str = ""
 
+    # Detection rule settings
+    detection_huge_file_threshold_bytes: int = 50 * 1024 * 1024  # 50 MB default
+
     # Observability
     otlp_endpoint: str = "http://localhost:4317"
     metrics_enabled: bool = False
