@@ -38,7 +38,11 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableRbacAuthorization: true
     enableSoftDelete: true
     softDeleteRetentionInDays: softDeleteRetentionInDays
-    enablePurgeProtection: enablePurgeProtection
+    // Azure rejects explicit `enablePurgeProtection: false` — the property
+    // can only be omitted or set to true (irreversible once on). Setting to
+    // null here causes the Bicep compiler to omit the property from the ARM
+    // body, which Azure accepts as "not enabled".
+    enablePurgeProtection: enablePurgeProtection ? true : null
     publicNetworkAccess: 'Disabled'
     networkAcls: {
       defaultAction: 'Deny'

@@ -105,17 +105,54 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }}
 
-      - name: Deploy
+      # Submit the deployment asynchronously. A synchronous `az deployment sub
+      # create` would block the step for the full deploy duration; GitHub's
+      # federated OIDC assertions expire after 5 min, so any long deploy
+      # eventually fails with AADSTS700024 when az CLI tries to refresh.
+      - name: Submit deployment (async)
         run: |
           az deployment sub create \
             --name rac-dev-${{ github.run_id }} \
             --location ${{ vars.AZURE_LOCATION }} \
             --template-file infra/main.bicep \
             --parameters infra/environments/dev.bicepparam \
-            --parameters pgAdminPassword=$RAC_PG_ADMIN_PASSWORD appGwTlsCertKvSecretId=$RAC_APPGW_TLS_CERT_KV_SECRET_ID
+            --parameters pgAdminPassword=$RAC_PG_ADMIN_PASSWORD appGwTlsCertKvSecretId=$RAC_APPGW_TLS_CERT_KV_SECRET_ID \
+            --no-wait
         env:
           RAC_PG_ADMIN_PASSWORD: ${{ secrets.RAC_PG_ADMIN_PASSWORD }}
           RAC_APPGW_TLS_CERT_KV_SECRET_ID: ${{ secrets.RAC_APPGW_TLS_CERT_KV_SECRET_ID }}
+
+      # Poll deployment state. Each `az` call is short (< 5s) so it completes
+      # before the current AAD access token's ~1hr lifetime needs refreshing.
+      # If a call fails with an auth error, exit with code 2 so the operator
+      # can re-run the job — the new run gets a fresh OIDC exchange and picks
+      # up polling of the same deployment name.
+      - name: Wait for deployment
+        timeout-minutes: 90
+        run: |
+          DEP_NAME="rac-dev-${{ github.run_id }}"
+          echo "Polling deployment $DEP_NAME every 60s..."
+          while true; do
+            if ! STATE=$(az deployment sub show --name "$DEP_NAME" --query properties.provisioningState -o tsv 2>/tmp/az-err); then
+              echo "::warning::Poll failed:"
+              cat /tmp/az-err
+              if grep -q -E "AADSTS|expired|Authentication" /tmp/az-err 2>/dev/null; then
+                echo "::error::Auth expired during long-running deploy. Re-run the workflow to resume polling."
+                exit 2
+              fi
+              exit 1
+            fi
+            echo "[$(date -u +%H:%M:%SZ)] state=$STATE"
+            case "$STATE" in
+              Succeeded) echo "Deployment succeeded."; exit 0 ;;
+              Failed|Canceled)
+                echo "::error::Deployment terminated with state=$STATE"
+                az deployment sub show --name "$DEP_NAME" --query properties.error -o json
+                exit 1
+                ;;
+            esac
+            sleep 60
+          done
 
   deploy-staging:
     name: Deploy (staging)
