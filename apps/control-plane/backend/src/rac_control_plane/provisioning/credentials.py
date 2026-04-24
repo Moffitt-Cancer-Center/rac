@@ -13,7 +13,7 @@ from azure.keyvault.keys import KeyClient
 from azure.mgmt.appcontainers import ContainerAppsAPIClient
 from azure.mgmt.dns import DnsManagementClient
 from azure.mgmt.storage import StorageManagementClient
-from msgraph import GraphServiceClient
+from msgraph import GraphServiceClient  # type: ignore[attr-defined]
 
 from rac_control_plane.settings import get_settings
 

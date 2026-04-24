@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from rac_control_plane.api.routes.agents import router as agents_router
+from rac_control_plane.api.routes.approvals import router as approvals_router
 from rac_control_plane.api.routes.findings import router as findings_router
 from rac_control_plane.api.routes.jobs import router as jobs_router
 from rac_control_plane.api.routes.submissions import router as submissions_router
@@ -165,6 +166,7 @@ def create_app() -> FastAPI:
 
     # Register routers
     app.include_router(submissions_router, prefix="")
+    app.include_router(approvals_router, prefix="")
     app.include_router(findings_router, prefix="")
     app.include_router(agents_router, prefix="")
     app.include_router(webhooks_router, prefix="")

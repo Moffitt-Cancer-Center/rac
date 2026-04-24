@@ -6,19 +6,18 @@ Used to enrich Principal.roles when the JWT roles claim is not populated
 (e.g., when group-based role assignment is preferred over app-role assignment).
 """
 
-import asyncio
-import logging
 from uuid import UUID
 
+import structlog
 from cachetools import TTLCache
-from msgraph import GraphServiceClient
+from msgraph import GraphServiceClient  # type: ignore[attr-defined]
 
 from rac_control_plane.provisioning.credentials import get_graph_client
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Cache: OID → frozenset of group display names / IDs
-_membership_cache: TTLCache[UUID, frozenset[str]] = TTLCache(  # type: ignore[type-arg]
+_membership_cache: TTLCache["UUID", "frozenset[str]"] = TTLCache(
     maxsize=5_000,
     ttl=300,  # 5 minutes
 )

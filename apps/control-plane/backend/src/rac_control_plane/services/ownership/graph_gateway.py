@@ -8,22 +8,22 @@ Wraps msgraph-sdk calls with:
 """
 
 import asyncio
-import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+import structlog
 from cachetools import TTLCache
-from msgraph import GraphServiceClient
+from msgraph import GraphServiceClient  # type: ignore[attr-defined]
 from msgraph.generated.models.o_data_errors.o_data_error import ODataError
 
 from rac_control_plane.provisioning.credentials import get_graph_client
 from rac_control_plane.settings import get_settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Module-level positive-result cache.  Keyed by OID, value is GraphUser.
 # Size is capped at 10_000 entries to bound memory under heavy batch loads.
-_user_cache: TTLCache[UUID, "GraphUser"] = TTLCache(  # type: ignore[type-arg]
+_user_cache: TTLCache["UUID", "GraphUser"] = TTLCache(
     maxsize=10_000,
     ttl=300,  # replaced at module init via _refresh_cache_ttl()
 )
@@ -145,7 +145,7 @@ async def get_users_batch(
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     out: dict[UUID, GraphUser | None] = {}
-    for oid, result in zip(oids, results):
+    for oid, result in zip(oids, results, strict=False):
         if isinstance(result, BaseException):
             logger.error(
                 "graph_batch_user_error", oid=str(oid), error=str(result)

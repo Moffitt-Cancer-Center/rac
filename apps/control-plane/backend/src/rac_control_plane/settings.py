@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     azure_location: str = "eastus"
     dns_zone_name: str = ""
     files_storage_account_name: str = ""
-    files_storage_account_key_kv_secret_name: str = "files-storage-account-key"
+    files_storage_account_key_kv_secret_name: str = "files-storage-account-key"  # noqa: S105
     managed_identity_resource_id: str = ""
     controlplane_managed_identity_client_id: str = ""
     graph_app_only_client_id: str = ""  # empty → DefaultAzureCredential chain
