@@ -22,14 +22,20 @@ dependencies = [
     "pyyaml",
     "httpx",
     "structlog",
-    "azure-identity",
-    "azure-keyvault-keys",
+    "azure-identity>=1.19",
+    "azure-keyvault-keys>=4.8",
     "azure-keyvault-secrets",
     "azure-storage-blob",
+    "azure-mgmt-appcontainers>=3.2",
+    "azure-mgmt-dns>=9.0",
+    "azure-mgmt-storage>=21.1",
+    "msgraph-sdk>=1.0",
+    "cachetools>=5.0",
     "opencensus-ext-azure",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
     "dockerfile-parse>=2.0.1",
+    "types-pyyaml>=6.0.12.20260408",
 ]
 
 [dependency-groups]
@@ -45,6 +51,8 @@ dev = [
     "pyjwt",
     "docker",
     "respx",
+    "types-cachetools",
+    "pytest-mock",
 ]
 
 [tool.ruff]

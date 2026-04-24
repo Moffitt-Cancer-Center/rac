@@ -34,6 +34,19 @@ class Settings(BaseSettings):
     acr_login_server: str
     aca_env_resource_id: str
 
+    # Azure resource scoping (Phase 5)
+    subscription_id: str = ""
+    resource_group: str = ""  # Tier 3 resource group
+    azure_location: str = "eastus"
+    dns_zone_name: str = ""
+    files_storage_account_name: str = ""
+    files_storage_account_key_kv_secret_name: str = "files-storage-account-key"
+    managed_identity_resource_id: str = ""
+    controlplane_managed_identity_client_id: str = ""
+    graph_app_only_client_id: str = ""  # empty → DefaultAzureCredential chain
+    graph_user_cache_ttl_seconds: int = 300
+    app_gateway_public_ip: str = ""
+
     # Scan settings
     scan_severity_gate: Literal["critical", "high", "medium", "low"]
 
