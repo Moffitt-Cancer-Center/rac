@@ -16,8 +16,6 @@ from uuid import uuid4
 
 import pytest
 
-import pytest
-
 from rac_control_plane.provisioning.aca import (
     ProvisioningError,
     TransientProvisioningError,

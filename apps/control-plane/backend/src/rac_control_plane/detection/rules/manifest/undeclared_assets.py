@@ -56,9 +56,10 @@ def _evaluate(ctx: RepoContext) -> Iterator[Finding]:
     if not mount_paths:
         return
 
-    from dockerfile_parse import DockerfileParser
+    from dockerfile_parse import DockerfileParser  # type: ignore[import-untyped]
 
-    parser = DockerfileParser(fileobj=io.BytesIO(ctx.dockerfile_text.encode("utf-8", errors="replace")))
+    encoded = ctx.dockerfile_text.encode("utf-8", errors="replace")
+    parser = DockerfileParser(fileobj=io.BytesIO(encoded))
 
     for item in parser.structure:
         if item["instruction"] not in ("COPY", "ADD"):

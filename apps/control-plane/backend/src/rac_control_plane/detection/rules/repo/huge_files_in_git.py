@@ -15,7 +15,6 @@ from collections.abc import Iterator
 
 from rac_control_plane.detection.contracts import Finding, RepoContext, Rule
 
-
 _DEFAULT_THRESHOLD_BYTES = 50 * 1024 * 1024  # 50 MiB
 
 

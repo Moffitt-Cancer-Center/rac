@@ -6,8 +6,9 @@ to synthetic warn Findings so operator breakage is surfaced without aborting
 the full evaluation run.
 """
 
-import structlog
 from collections.abc import Iterable
+
+import structlog
 
 from rac_control_plane.detection.contracts import Finding, RepoContext, Rule
 

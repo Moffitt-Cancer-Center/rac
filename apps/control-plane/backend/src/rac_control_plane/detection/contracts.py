@@ -6,11 +6,11 @@ No FCIS tag: type-only modules are exempt per Phase 4 policy.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, Literal, Mapping
+from typing import Literal
 from uuid import UUID
-
 
 Severity = Literal["info", "warn", "error"]
 
@@ -60,7 +60,7 @@ class RepoContext:
         try:
             target.relative_to(repo_resolved)
         except ValueError:
-            raise ValueError(f"Path traversal detected: {path!r}")
+            raise ValueError(f"Path traversal detected: {path!r}") from None
 
         return target.read_bytes()
 

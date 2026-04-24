@@ -16,9 +16,10 @@ from rac_control_plane.detection.contracts import Finding, RepoContext, Rule
 
 def _evaluate(ctx: RepoContext) -> Iterator[Finding]:
     """Fire if no USER instruction is present in the Dockerfile."""
-    from dockerfile_parse import DockerfileParser
+    from dockerfile_parse import DockerfileParser  # type: ignore[import-untyped]
 
-    parser = DockerfileParser(fileobj=io.BytesIO(ctx.dockerfile_text.encode("utf-8", errors="replace")))
+    encoded = ctx.dockerfile_text.encode("utf-8", errors="replace")
+    parser = DockerfileParser(fileobj=io.BytesIO(encoded))
 
     has_user = any(item["instruction"] == "USER" for item in parser.structure)
 

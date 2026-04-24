@@ -499,3 +499,48 @@ async def test_submission_invalid_pi_returns_422(client, db_session, mock_oidc):
     result = await db_session.scalars(stmt)
     rows = list(result)
     assert rows == [], f"Expected no submission rows for {test_user_oid}, found {len(rows)}"
+
+
+# ---------------------------------------------------------------------------
+# Test 10 — AC9.1: Disabled PI account returns 422 (different from not_found)
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_submission_disabled_pi_returns_422(client, db_session, mock_oidc):
+    """AC9.1: Submission whose PI has account_enabled=False is rejected before DB write."""
+    from rac_control_plane.services.ownership.graph_gateway import GraphUser
+
+    test_user_oid = uuid4()
+    token = mock_oidc.issue_user_token(oid=test_user_oid, roles=[])
+    headers = {"Authorization": f"Bearer {token}"}
+    disabled_pi_id = uuid4()
+    body = _valid_body(pi_principal_id=disabled_pi_id)
+
+    async def _return_disabled(oid, *, client=None):  # type: ignore[misc]
+        return GraphUser(
+            oid=oid,
+            account_enabled=False,
+            display_name="Disabled PI",
+            user_principal_name="disabled.pi@example.com",
+            department="Archived",
+        )
+
+    with patch(
+        "rac_control_plane.services.ownership.graph_gateway.get_user",
+        side_effect=_return_disabled,
+    ), _mock_github_success() as mock:
+        mock.start()
+        response = await client.post("/submissions", json=body, headers=headers)
+        mock.stop()
+
+    assert response.status_code == 422, response.text
+    data = response.json()
+    assert data.get("code") == "invalid_pi", f"Expected code='invalid_pi', got: {data}"
+    assert "account_disabled" in data.get("message", ""), (
+        f"Expected 'account_disabled' in message, got: {data.get('message')}"
+    )
+
+    stmt = select(Submission).where(
+        Submission.submitter_principal_id == test_user_oid
+    )
+    rows = list(await db_session.scalars(stmt))
+    assert rows == [], f"Expected no submission rows for {test_user_oid}, found {len(rows)}"

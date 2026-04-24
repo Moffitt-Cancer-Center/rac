@@ -10,16 +10,13 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
 import yaml
 
+from rac_control_plane.data.models import Submission
 from rac_control_plane.detection.contracts import RepoContext, RepoFile
-
-if TYPE_CHECKING:
-    from rac_control_plane.data.models import Submission
 
 logger = structlog.get_logger(__name__)
 
@@ -54,7 +51,7 @@ def scan_repo_tree(repo_root: Path) -> list[RepoFile]:
 
 
 async def build_repo_context(
-    submission: "Submission",
+    submission: Submission,
     workdir: Path,
     *,
     git_binary: str = "git",

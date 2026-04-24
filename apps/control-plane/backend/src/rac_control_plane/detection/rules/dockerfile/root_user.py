@@ -18,9 +18,10 @@ _ROOT_USERS = frozenset(["root", "0", "root:root", "0:0"])
 
 def _evaluate(ctx: RepoContext) -> Iterator[Finding]:
     """Fire if the last USER instruction in the Dockerfile resolves to root."""
-    from dockerfile_parse import DockerfileParser
+    from dockerfile_parse import DockerfileParser  # type: ignore[import-untyped]
 
-    parser = DockerfileParser(fileobj=io.BytesIO(ctx.dockerfile_text.encode("utf-8", errors="replace")))
+    encoded = ctx.dockerfile_text.encode("utf-8", errors="replace")
+    parser = DockerfileParser(fileobj=io.BytesIO(encoded))
 
     user_instructions = [
         item for item in parser.structure if item["instruction"] == "USER"

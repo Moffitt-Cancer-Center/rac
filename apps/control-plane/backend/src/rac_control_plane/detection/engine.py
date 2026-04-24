@@ -14,18 +14,19 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from rac_control_plane.data import detection_finding_store
-from rac_control_plane.data.models import ApprovalEvent, DetectionFinding, Submission, SubmissionStatus
+from rac_control_plane.data.models import (
+    ApprovalEvent,
+    DetectionFinding,
+    Submission,
+    SubmissionStatus,
+)
 from rac_control_plane.detection import evaluate
 from rac_control_plane.detection.contracts import Finding, Rule
-
-if TYPE_CHECKING:
-    pass
 
 logger = structlog.get_logger(__name__)
 
@@ -60,8 +61,10 @@ async def run_detection(
     # Step 1: Load rules
     if rules is None:
         try:
-            from rac_control_plane.main import app as _app  # type: ignore[attr-defined]
-            rules = getattr(_app.state, "rules", None)
+            import rac_control_plane.main as _main_module
+            rules = getattr(getattr(_main_module, "app", None), "state", None)
+            if rules is not None:
+                rules = getattr(rules, "rules", None)
         except Exception:  # noqa: BLE001
             rules = None
         if rules is None:
@@ -75,6 +78,8 @@ async def run_detection(
     if use_tmpdir:
         tmp = tempfile.mkdtemp(prefix="rac_detection_")
         workdir = Path(tmp)
+
+    assert workdir is not None  # noqa: S101 — either passed in or assigned above
 
     try:
         ctx = await build_repo_context(
@@ -113,9 +118,12 @@ async def run_detection(
     )
 
     if should_transition and submission.status == SubmissionStatus.awaiting_scan:
+        from rac_control_plane.services.submissions.fsm import (
+            SubmissionStatus as FsmStatus,
+        )
         from rac_control_plane.services.submissions.fsm import transition
-        new_status = transition(submission.status, "detection_needs_user_action")
-        submission.status = new_status
+        new_status = transition(FsmStatus(submission.status), "detection_needs_user_action")
+        submission.status = new_status  # type: ignore[assignment]
         session.add(submission)
         await session.flush()
 

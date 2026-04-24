@@ -79,7 +79,12 @@ async def list_failed_provisions(
             s.pi_principal_id,
             ae.comment     AS last_failure_reason,
             ae.created_at  AS failed_at,
-            COUNT(*) OVER (PARTITION BY s.id) AS retry_count
+            (
+                SELECT COUNT(*)
+                FROM approval_event ae4
+                WHERE ae4.submission_id = s.id
+                  AND ae4.kind = 'provisioning_failed'
+            ) AS retry_count
         FROM submission s
         JOIN approval_event ae ON ae.submission_id = s.id
             AND ae.kind = 'provisioning_failed'

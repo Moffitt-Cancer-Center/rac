@@ -104,7 +104,7 @@ def _evaluate(ctx: RepoContext) -> Iterator[Finding]:
         # Decode leniently
         try:
             text = raw_bytes.decode("utf-8", errors="replace")
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S112
             continue
 
         for pattern_name, pattern in _SECRET_PATTERNS:

@@ -1,4 +1,4 @@
-// pattern: Functional Core — pure render based on props + local state; no external side effects.
+// pattern: Imperative Shell — orchestrates useQuery/useMutation + remote API calls.
 /**
  * FailedProvisionsList: Admin page that shows submissions stuck in 'approved'
  * with provisioning failures and provides a per-row retry button.

@@ -152,10 +152,12 @@ def compute_idle_apps(
             qualifies = days_idle >= idle_threshold_days
 
         if qualifies:
-            monthly_cost = slug_to_cost[app_slug]
-            # Average daily cost × 30 (based on the snapshot's month cost)
-            daily_avg = monthly_cost / Decimal(30)
-            estimated_savings = daily_avg * Decimal(30)
+            # Phase 5 simplification: the savings figure equals the full monthly
+            # cost (i.e., we'd save everything by deleting the app). Once Phase 6
+            # populates last_request_at from real Shim traffic, this should become
+            # (idle_days / 30) × monthly_cost or similar so partially-active apps
+            # don't over-attribute savings.
+            estimated_savings = slug_to_cost[app_slug]
 
             idle.append(
                 IdleApp(
