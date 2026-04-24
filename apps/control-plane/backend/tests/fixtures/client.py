@@ -93,6 +93,10 @@ async def app(monkeypatch, migrated_db, mock_oidc):
         "RAC_GH_PIPELINE_REPO": "rac-pipeline",
         "RAC_GH_PAT": "ghp_test_token",
         "RAC_CALLBACK_BASE_URL": "http://test",
+        # Phase 7 settings
+        "RAC_MAX_REVIEWER_TOKEN_TTL_DAYS": "180",
+        "RAC_ISSUER": "https://rac.test.local",
+        "RAC_REQUIRE_PUBLICATION_FOR_PUBLIC": "false",
     }
 
     for key, value in test_env.items():

@@ -12,6 +12,7 @@ from rac_control_plane.api.routes.agents import router as agents_router
 from rac_control_plane.api.routes.approvals import router as approvals_router
 from rac_control_plane.api.routes.cost import router as cost_router
 from rac_control_plane.api.routes.tokens import router as tokens_router
+from rac_control_plane.api.routes.access_mode import router as access_mode_router
 from rac_control_plane.api.routes.findings import router as findings_router
 from rac_control_plane.api.routes.jobs import router as jobs_router
 from rac_control_plane.api.routes.ownership import router as ownership_router
@@ -180,6 +181,7 @@ def create_app() -> FastAPI:
     app.include_router(ownership_router, prefix="")
     app.include_router(cost_router, prefix="")
     app.include_router(tokens_router, prefix="")
+    app.include_router(access_mode_router, prefix="")
 
     # Static file mount for React SPA (must be last)
     static_dir = Path(__file__).parent / "static"

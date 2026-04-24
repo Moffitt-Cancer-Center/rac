@@ -37,4 +37,8 @@ def make_test_settings() -> Settings:
         managed_identity_resource_id="/subscriptions/test/resourceGroups/test/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-rac",
         controlplane_managed_identity_client_id="test-mi-client-id",
         app_gateway_public_ip="10.0.0.1",
+        # Phase 7 fields
+        max_reviewer_token_ttl_days=180,
+        issuer="https://rac.test.local",
+        require_publication_for_public=False,
     )
