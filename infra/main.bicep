@@ -320,6 +320,23 @@ module graphSweepJob 'modules/graph-sweep-job.bicep' = if (!empty(controlPlaneIm
   }
 }
 
+// ========== PHASE 5: COST INGEST SCHEDULED JOB ==========
+// Deploys only when controlPlaneImageName is provided (post-Phase-5 re-deploy).
+// Runs nightly at 03:00 UTC to ingest Azure Cost Management export blobs (AC11.2).
+module costIngestJob 'modules/cost-ingest-job.bicep' = if (!empty(controlPlaneImageName)) {
+  scope: rg
+  name: 'deploy-cost-ingest-job'
+  params: {
+    location: location
+    racEnv: racEnv
+    managedEnvironmentId: acaEnvironment.outputs.envId
+    imageName: controlPlaneImageName
+    managedIdentityResourceId: managedIdentity.outputs.controlPlaneMiResourceId
+    registryServer: acr.outputs.acrLoginServer
+    tags: commonTags
+  }
+}
+
 module eventHub 'modules/event-hub.bicep' = {
   scope: rg
   name: 'deploy-eventhub'

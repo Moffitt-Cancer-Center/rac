@@ -1,0 +1,126 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "6689566185490139979"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region for the job resource"
+      }
+    },
+    "racEnv": {
+      "type": "string",
+      "metadata": {
+        "description": "Deployment environment: dev | staging | prod"
+      }
+    },
+    "managedEnvironmentId": {
+      "type": "string",
+      "metadata": {
+        "description": "ACA managed environment resource ID"
+      }
+    },
+    "imageName": {
+      "type": "string",
+      "metadata": {
+        "description": "Full image reference, e.g. acr.azurecr.io/rac-control-plane:latest"
+      }
+    },
+    "managedIdentityResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "User-assigned managed identity resource ID"
+      }
+    },
+    "registryServer": {
+      "type": "string",
+      "metadata": {
+        "description": "ACR login server, e.g. acr.azurecr.io"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "metadata": {
+        "description": "Resource tags"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.App/jobs",
+      "apiVersion": "2024-03-01",
+      "name": "[format('rac-cost-ingest-{0}', parameters('racEnv'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', parameters('managedIdentityResourceId'))]": {}
+        }
+      },
+      "properties": {
+        "environmentId": "[parameters('managedEnvironmentId')]",
+        "configuration": {
+          "triggerType": "Schedule",
+          "replicaTimeout": 3600,
+          "replicaRetryLimit": 1,
+          "scheduleTriggerConfig": {
+            "cronExpression": "0 3 * * *",
+            "parallelism": 1,
+            "replicaCompletionCount": 1
+          },
+          "secrets": [],
+          "registries": [
+            {
+              "server": "[parameters('registryServer')]",
+              "identity": "[parameters('managedIdentityResourceId')]"
+            }
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "cost-ingest",
+              "image": "[parameters('imageName')]",
+              "command": [
+                "python"
+              ],
+              "args": [
+                "-m",
+                "rac_control_plane.cli.cost_ingest"
+              ],
+              "resources": {
+                "cpu": "[json('0.5')]",
+                "memory": "1Gi"
+              },
+              "env": []
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "jobId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the scheduled job"
+      },
+      "value": "[resourceId('Microsoft.App/jobs', format('rac-cost-ingest-{0}', parameters('racEnv')))]"
+    },
+    "jobName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the scheduled job"
+      },
+      "value": "[format('rac-cost-ingest-{0}', parameters('racEnv'))]"
+    }
+  }
+}
