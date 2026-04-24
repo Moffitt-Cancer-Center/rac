@@ -43,6 +43,7 @@ dev = [
     "hypothesis",
     "pyjwt",
     "docker",
+    "respx",
 ]
 
 [tool.ruff]

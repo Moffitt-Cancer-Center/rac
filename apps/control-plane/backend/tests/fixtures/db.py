@@ -103,3 +103,29 @@ async def db_session(migrated_db: str):
         # Outer transaction rolled back
 
     await engine.dispose()
+
+
+@pytest.fixture
+async def db_setup(migrated_db: str):
+    """Function-scoped: a SEPARATE session for inserting committed setup data.
+
+    Use this when tests need to INSERT rows that must be visible to the app
+    (which opens its own sessions).  Call ``await db_setup.commit()`` explicitly
+    after inserting your setup rows to make them visible before the HTTP request.
+
+    These rows are NOT rolled back automatically — tests must use unique
+    identifiers (e.g., randomly generated UUIDs) to avoid cross-test pollution.
+    """
+    from sqlalchemy.pool import NullPool
+
+    engine = create_async_engine(migrated_db, echo=False, poolclass=NullPool)
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+
+    async with session_factory() as session:
+        yield session
+
+    await engine.dispose()

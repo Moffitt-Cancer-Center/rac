@@ -14,13 +14,11 @@ from rac_control_plane.main import create_app
 from rac_control_plane.settings import get_settings
 
 
-def _parse_dsn(dsn: str) -> dict:
+def _parse_dsn(dsn: str) -> dict:  # type: ignore[type-arg]
     """Parse PostgreSQL DSN into components."""
-    # Handle both sync and async DSNs
     dsn_to_parse = dsn.replace("postgresql+asyncpg://", "postgresql://")
     parsed = urlparse(dsn_to_parse)
 
-    # Extract password separately since urlparse doesn't handle it well
     netloc = parsed.netloc
     if "@" in netloc:
         auth, host_part = netloc.rsplit("@", 1)
@@ -82,7 +80,10 @@ async def app(monkeypatch, migrated_db, mock_oidc):
         "RAC_KV_URI": "https://test-kv.vault.azure.net/",
         "RAC_BLOB_ACCOUNT_URL": "https://teststorage.blob.core.windows.net/",
         "RAC_ACR_LOGIN_SERVER": "test.azurecr.io",
-        "RAC_ACA_ENV_RESOURCE_ID": "/subscriptions/test/resourceGroups/test/providers/Microsoft.App/managedEnvironments/test",
+        "RAC_ACA_ENV_RESOURCE_ID": (
+            "/subscriptions/test/resourceGroups/test"
+            "/providers/Microsoft.App/managedEnvironments/test"
+        ),
         "RAC_SCAN_SEVERITY_GATE": "high",
         "RAC_APPROVER_ROLE_RESEARCH": "research_approver",
         "RAC_APPROVER_ROLE_IT": "it_approver",

@@ -4,7 +4,7 @@ Imports fixture modules to make fixtures available to all tests.
 """
 
 # Import fixtures to make them available
-from tests.fixtures.db import db_session, migrated_db, pg_dsn, postgres_container  # noqa: F401
+from tests.fixtures.db import db_session, db_setup, migrated_db, pg_dsn, postgres_container  # noqa: F401
 from tests.fixtures.oidc import mock_oidc  # noqa: F401
 from tests.fixtures.client import app, client  # noqa: F401
 
@@ -13,6 +13,7 @@ __all__ = [
     "pg_dsn",
     "migrated_db",
     "db_session",
+    "db_setup",
     "mock_oidc",
     "app",
     "client",
