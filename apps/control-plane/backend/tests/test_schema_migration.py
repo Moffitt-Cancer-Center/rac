@@ -26,7 +26,7 @@ def postgres_container():
 
     container = PostgresContainer(
         image="postgres:16-alpine",
-        driver="psycopg",
+        driver="asyncpg",
     )
 
     # Add custom init SQL that installs pg_uuidv7 and creates rac_app role
@@ -38,8 +38,12 @@ def postgres_container():
     """
 
     with container as postgres:
-        # Create the extension and role
-        engine = create_async_engine(postgres.get_connection_url() + "?driver=psycopg", echo=False)
+        engine = create_async_engine(
+            postgres.get_connection_url().replace(
+                "postgresql+psycopg2://", "postgresql+asyncpg://"
+            ),
+            echo=False,
+        )
 
         async def init_db():
             async with engine.begin() as conn:
@@ -53,7 +57,9 @@ def postgres_container():
 @pytest.fixture
 def pg_dsn(postgres_container):
     """Postgres connection DSN for tests."""
-    return postgres_container.get_connection_url() + "?driver=psycopg&asyncio_mode=auto"
+    return postgres_container.get_connection_url().replace(
+        "postgresql+psycopg2://", "postgresql+asyncpg://"
+    )
 
 
 @pytest.fixture
