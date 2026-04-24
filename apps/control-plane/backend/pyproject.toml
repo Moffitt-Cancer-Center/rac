@@ -29,6 +29,7 @@ dependencies = [
     "opencensus-ext-azure",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
+    "dockerfile-parse>=2.0.1",
 ]
 
 [dependency-groups]
