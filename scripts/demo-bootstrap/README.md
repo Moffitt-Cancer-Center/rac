@@ -34,12 +34,32 @@ manually, because:
 Each step is idempotent: re-running on an already-bootstrapped subscription
 picks up the existing apps/SP/creds/role by name rather than failing.
 
+## What bootstrap-kv.sh does
+
+1. Creates `rg-rac-bootstrap` (shared across environments).
+2. Creates `kv-rac-bootstrap-001` (RBAC mode, 7-day soft-delete, purge
+   protection disabled so it can be deleted cleanly at the end of the demo).
+3. Grants the current user `Key Vault Administrator` and the Infra Deploy SP
+   `Key Vault Secrets User` on the vault.
+4. Generates a 32-char PG admin password and stores it as
+   `pg-admin-password-<env>` (only if not already present — never overwrites).
+5. Generates a self-signed wildcard TLS cert for `*.<domain>`, packages it
+   as PFX, and imports it as the KV certificate `appgw-cert-<env>`.
+6. Emits `RAC_APPGW_TLS_CERT_KV_SECRET_ID` and the `az keyvault secret show`
+   command for fetching the PG password locally.
+
 ## What teardown.sh does
 
 Deletes the three apps (which cascades to SP + federated credentials),
 removes the subscription-scope Owner role assignment, and reverts Defender
 for Containers to the Free tier. It does NOT touch any deployed Azure
-resources — use `scripts/teardown.sh` for those.
+resources — use `scripts/teardown.sh` for those. It also does NOT delete
+`rg-rac-bootstrap`, since its secrets (TLS cert, PG password) are meant to
+survive env rebuilds. To blow that away too, run:
+
+```bash
+az group delete --name rg-rac-bootstrap --yes
+```
 
 ## Usage
 
@@ -48,18 +68,27 @@ resources — use `scripts/teardown.sh` for those.
 az login
 az account set --subscription <SUBSCRIPTION_ID>
 
-# Run the bootstrap (idempotent)
+# 1. Subscription-scope setup (Entra apps, SP, Owner, Defender, providers)
 ./scripts/demo-bootstrap/setup.sh \
   --subscription <SUBSCRIPTION_ID> \
   --github-repo Moffitt-Cancer-Center/rac
 
+# 2. Bootstrap Key Vault + PG password + self-signed TLS cert for an env
+./scripts/demo-bootstrap/bootstrap-kv.sh \
+  --subscription <SUBSCRIPTION_ID> \
+  --env dev \
+  --domain rac-dev.rac.checkwithscience.com
+
 # When done with the demo
 ./scripts/demo-bootstrap/teardown.sh \
   --subscription <SUBSCRIPTION_ID>
+# To also delete the bootstrap KV + RG (holds certs/passwords across rebuilds):
+#   az group delete --name rg-rac-bootstrap --yes
 ```
 
-Both scripts read `AZ_SUBSCRIPTION_ID` and `GITHUB_REPO` from the environment
-as fallbacks if the flags are omitted.
+Setup and teardown read `AZ_SUBSCRIPTION_ID` and `GITHUB_REPO` from the environment
+as fallbacks. `bootstrap-kv.sh` additionally takes `--env` (default `dev`) and
+requires `--domain`.
 
 ## What this does NOT cover
 
