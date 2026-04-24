@@ -60,6 +60,7 @@ async def create_or_update_app(
     storage_account_key_secret_uri: str,
     tags: dict[str, str],
     *,
+    asset_mounts: list[dict[str, str]] | None = None,
     aca_client: Any = None,
 ) -> dict[str, Any]:
     """Create or update an ACA container app for the given submission.
@@ -79,6 +80,10 @@ async def create_or_update_app(
         storage_account_name: Storage account that hosts the file share.
         storage_account_key_secret_uri: KV secret URI for the storage account key.
         tags: Azure resource tags (must include AC11.1 tags).
+        asset_mounts: Optional list of per-asset mount specs, each a dict with
+            keys 'name' (asset.name), 'mount_path' (absolute container path),
+            and 'sub_path' (path within the Files share). When provided, one
+            VolumeMount per asset is added alongside the base "assets" volume.
         aca_client: Optional injected ACA client for testing.
 
     Returns:
@@ -105,7 +110,6 @@ async def create_or_update_app(
         Secret,
         Template,
         Volume,
-        VolumeMount,
     )
 
     settings = get_settings()
@@ -161,12 +165,7 @@ async def create_or_update_app(
                     name=slug,
                     image=image_ref,
                     env=[EnvironmentVar(name=e["name"], value=e["value"]) for e in env_vars],
-                    volume_mounts=[
-                        VolumeMount(
-                            volume_name="assets",
-                            mount_path="/mnt/assets",
-                        )
-                    ],
+                    volume_mounts=_build_volume_mounts(asset_mounts),
                     resources=ContainerResources(
                         cpu=cpu_cores,
                         memory=f"{memory_gb}Gi",
@@ -248,3 +247,51 @@ async def create_or_update_app(
             code="aca_transient",
             detail=f"ACA unexpected error {status}: {msg}",
         ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Volume mount helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_volume_mounts(
+    asset_mounts: list[dict[str, str]] | None,
+) -> list[Any]:
+    """Build the list of VolumeMount objects for a ContainerApp.
+
+    If asset_mounts is provided (one entry per ready asset), each asset gets
+    its own VolumeMount pointing at its declared mount_path with a sub_path
+    referencing the asset's filename within the shared Azure Files share.
+
+    If no asset mounts are provided, fall back to the legacy single-volume
+    mount at /mnt/assets (preserves backward compat for tests that don't
+    pass asset_mounts).
+
+    Args:
+        asset_mounts: List of dicts with keys:
+            - name:       asset name (used as sub_path in the share)
+            - mount_path: absolute path inside the container
+            - sub_path:   path of the file within the Azure Files share
+
+    Returns:
+        List of VolumeMount objects.
+    """
+    from azure.mgmt.appcontainers.models import VolumeMount
+
+    if not asset_mounts:
+        # Legacy: single mount for the whole share at /mnt/assets
+        return [
+            VolumeMount(
+                volume_name="assets",
+                mount_path="/mnt/assets",
+            )
+        ]
+
+    return [
+        VolumeMount(
+            volume_name="assets",
+            mount_path=mount["mount_path"],
+            sub_path=mount.get("sub_path", mount.get("name", "")),
+        )
+        for mount in asset_mounts
+    ]

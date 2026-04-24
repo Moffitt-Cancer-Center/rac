@@ -74,6 +74,11 @@ def _make_default_files_fn() -> Callable[..., Coroutine[Any, Any, Any]]:
     return files.ensure_app_share
 
 
+def _make_default_populate_fn() -> Callable[..., Coroutine[Any, Any, Any]]:
+    from rac_control_plane.services.assets import blob_to_files_copy
+    return blob_to_files_copy.populate_app_share_from_assets
+
+
 async def _has_existing_signing_key(session: AsyncSession, app_slug: str) -> bool:
     """Return True if a signing key already exists for this app slug."""
     stmt = select(SigningKeyVersion).where(SigningKeyVersion.app_slug == app_slug)
@@ -107,6 +112,7 @@ async def provision_submission(
     dns_fn: Callable[..., Coroutine[Any, Any, Any]] | None = None,
     keys_fn: Callable[..., Coroutine[Any, Any, Any]] | None = None,
     files_fn: Callable[..., Coroutine[Any, Any, Any]] | None = None,
+    populate_fn: Callable[..., Coroutine[Any, Any, Any]] | None = None,
 ) -> ProvisioningOutcome:
     """Provision all Tier 3 Azure resources for an approved submission.
 
@@ -132,6 +138,8 @@ async def provision_submission(
         keys_fn = _make_default_keys_fn()
     if files_fn is None:
         files_fn = _make_default_files_fn()
+    if populate_fn is None:
+        populate_fn = _make_default_populate_fn()
 
     # Step 1: Upsert app row
     app = await upsert_app_for_approved_submission(session, submission)
@@ -183,6 +191,51 @@ async def provision_submission(
             else:
                 logger.info("provisioning_key_exists", slug=app.slug)
 
+            # Step 4b: Copy ready assets from Blob to Azure Files share
+            try:
+                copied_assets = await populate_fn(
+                    session,
+                    app=app,
+                    submission=submission,
+                    storage_account_name=settings.files_storage_account_name,
+                    share_name=app.slug,
+                )
+                logger.info(
+                    "provisioning_assets_copied",
+                    slug=app.slug,
+                    asset_count=len(copied_assets),
+                )
+            except Exception as exc:
+                # Non-fatal: log and continue — assets may be deployed without
+                # the blob copy if the submission has no ready assets.
+                logger.warning(
+                    "provisioning_assets_copy_failed",
+                    slug=app.slug,
+                    error=str(exc),
+                )
+                copied_assets = []
+
+            # Build per-asset mount specs for ACA
+            from sqlalchemy import select  # noqa: PLC0415
+
+            from rac_control_plane.data.models import Asset as AssetModel  # noqa: PLC0415
+            asset_rows_result = await session.execute(
+                select(AssetModel).where(
+                    AssetModel.submission_id == submission.id,
+                    AssetModel.status == "ready",
+                )
+            )
+            asset_rows = list(asset_rows_result.scalars().all())
+            asset_mounts = [
+                {
+                    "name": a.name or str(a.id),
+                    "mount_path": a.mount_path or f"/mnt/assets/{a.name}",
+                    "sub_path": a.name or str(a.id),
+                }
+                for a in asset_rows
+                if a.mount_path
+            ]
+
             # Step 5: Create/update ACA app
             await aca_fn(
                 slug=app.slug,
@@ -203,6 +256,7 @@ async def provision_submission(
                     f"{settings.files_storage_account_key_kv_secret_name}"
                 ),
                 tags=tags,
+                asset_mounts=asset_mounts or None,
             )
             logger.info("provisioning_aca_done", slug=app.slug, attempt=attempt)
 
