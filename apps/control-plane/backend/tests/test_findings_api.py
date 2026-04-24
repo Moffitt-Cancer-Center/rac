@@ -15,6 +15,7 @@ Additional:
 """
 
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -106,7 +107,7 @@ async def test_submitter_records_accept_warn_finding(
     assert UUID(data["decision_actor_principal_id"]) == submitter_oid
     assert UUID(data["detection_finding_id"]) == finding.id
 
-    # GET /submissions/{id}/findings shows the decision
+    # GET /submissions/{id}/findings shows the decision (nested shape)
     resp2 = await client.get(
         f"/submissions/{sub.id}/findings",
         headers=headers,
@@ -114,7 +115,9 @@ async def test_submitter_records_accept_warn_finding(
     assert resp2.status_code == 200
     findings = resp2.json()
     assert len(findings) == 1
-    assert findings[0]["latest_decision"] == "accept"
+    # Nested decision shape: findings[0]["decision"]["decision"] == "accept"
+    assert findings[0]["decision"] is not None
+    assert findings[0]["decision"]["decision"] == "accept"
 
 
 # ---------------------------------------------------------------------------
@@ -151,14 +154,18 @@ async def test_ac43_all_fields_persisted(
     assert "created_at" in data  # decision_at equivalent
     assert UUID(data["decision_id"])  # decision persisted with its own ID
 
-    # Verify rule_id and rule_version via GET findings
+    # Verify rule_id and rule_version via GET findings (nested decision shape)
     resp2 = await client.get(f"/submissions/{sub.id}/findings", headers=headers)
     assert resp2.status_code == 200
     f = resp2.json()[0]
     assert f["rule_id"] == "dockerfile/inline_downloads"
     assert f["rule_version"] == 1
-    assert f["decision_actor_principal_id"] == str(submitter_oid)
-    assert f["decision_at"] is not None
+    # Nested decision
+    assert f["decision"] is not None
+    assert f["decision"]["decision_actor_principal_id"] == str(submitter_oid)
+    assert f["decision"]["created_at"] is not None
+    # suggested_action field present (may be None for manually inserted findings)
+    assert "suggested_action" in f
 
 
 # ---------------------------------------------------------------------------
@@ -364,3 +371,58 @@ def test_property_warn_decisions_dont_affect_result(n_warn: int) -> None:
     findings = [{"severity": "warn", "latest_decision": None} for _ in range(n_warn)]
     # No error findings → should always resolve
     assert needs_user_action_resolved(findings) is True
+
+
+# ---------------------------------------------------------------------------
+# Important 2: Re-dispatch pipeline after detection_resolved
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_redispatch_called_after_detection_resolved(
+    client, db_setup: AsyncSession, mock_oidc
+) -> None:
+    """Important 2: deciding last error finding → submission to awaiting_scan + dispatch called.
+
+    We monkeypatch _make_redispatch_fn to capture calls instead of hitting GitHub.
+    """
+    submitter_oid = uuid4()
+    token = mock_oidc.issue_user_token(oid=submitter_oid, roles=[])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Create submission in needs_user_action
+    sub = Submission(**{
+        **_make_submission_data(submitter_oid),
+        "status": SubmissionStatus.needs_user_action,
+    })
+    db_setup.add(sub)
+    await db_setup.flush()
+
+    # One error finding (blocking)
+    finding = await _insert_finding(db_setup, sub.id, severity="error")
+    await db_setup.commit()
+
+    dispatch_calls: list = []
+
+    async def _fake_dispatch(payload: dict) -> None:
+        dispatch_calls.append(payload)
+
+    with patch(
+        "rac_control_plane.api.routes.findings._make_redispatch_fn",
+        return_value=_fake_dispatch,
+    ):
+        resp = await client.post(
+            f"/submissions/{sub.id}/findings/{finding.id}/decisions",
+            json={"decision": "accept"},
+            headers=headers,
+        )
+
+    assert resp.status_code == 201
+
+    # Submission returned to awaiting_scan
+    resp2 = await client.get(f"/submissions/{sub.id}", headers=headers)
+    assert resp2.json()["status"] == "awaiting_scan"
+
+    # Dispatch was called once (as a background task that runs inline in ASGI test)
+    assert len(dispatch_calls) == 1, (
+        f"Expected dispatch to be called once, got {len(dispatch_calls)}"
+    )

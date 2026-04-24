@@ -213,6 +213,7 @@ class DetectionFinding(Base):
     file_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     line_ranges: Mapped[Any] = mapped_column(JSONB, nullable=True)
     auto_fix: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    suggested_action: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

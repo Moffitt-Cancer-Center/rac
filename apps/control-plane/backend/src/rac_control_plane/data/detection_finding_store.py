@@ -7,7 +7,6 @@ SELECT (no UPDATE, no DELETE).
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict
 from typing import Any
 from uuid import UUID
@@ -17,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from rac_control_plane.data.models import DetectionFinding, DetectionFindingDecision
-from rac_control_plane.detection.contracts import Finding
+from rac_control_plane.detection.contracts import AutoFixAction, Finding
 
 logger = structlog.get_logger(__name__)
 
@@ -30,10 +29,9 @@ def _finding_to_jsonb(value: object) -> Any:
     if isinstance(value, tuple):
         return [list(pair) if isinstance(pair, tuple) else pair for pair in value]
     # For AutoFixAction dataclass → dict
-    try:
-        return asdict(value)  # type: ignore[arg-type]
-    except (TypeError, AttributeError):
-        return str(value)
+    if isinstance(value, AutoFixAction):
+        return asdict(value)
+    return str(value)
 
 
 async def insert_finding(
@@ -61,6 +59,7 @@ async def insert_finding(
         file_path=finding.file_path,
         line_ranges=_finding_to_jsonb(finding.line_ranges) if finding.line_ranges else None,
         auto_fix=_finding_to_jsonb(finding.auto_fix) if finding.auto_fix else None,
+        suggested_action=finding.suggested_action,
     )
     session.add(row)
     await session.flush()
@@ -172,11 +171,16 @@ async def list_findings_with_latest_decision(
             "file_path": f.file_path,
             "line_ranges": f.line_ranges,
             "auto_fix": f.auto_fix,
+            "suggested_action": f.suggested_action,
             "created_at": f.created_at,
-            "latest_decision": dec.decision if dec else None,
-            "decision_actor_principal_id": dec.decision_actor_principal_id if dec else None,
-            "decision_notes": dec.decision_notes if dec else None,
-            "decision_at": dec.created_at if dec else None,
-            "decision_id": dec.id if dec else None,
+            # Nested decision object (None if no decision yet)
+            "decision": None if dec is None else {
+                "id": dec.id,
+                "detection_finding_id": dec.detection_finding_id,
+                "decision": dec.decision,
+                "decision_actor_principal_id": dec.decision_actor_principal_id,
+                "decision_notes": dec.decision_notes,
+                "created_at": dec.created_at,
+            },
         })
     return results
