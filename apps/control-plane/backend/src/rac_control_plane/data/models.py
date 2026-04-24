@@ -144,6 +144,11 @@ class App(Base):
         nullable=False,
         default=AccessMode.token_required,
     )
+    last_request_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -473,7 +478,13 @@ class WebhookSubscription(Base):
 
 
 class CostSnapshotMonthly(Base):
-    """Monthly cost snapshot per app."""
+    """Monthly cost snapshot per app.
+
+    Migration 0008 replaces the Phase-2 placeholder columns with the spec-required
+    schema: app_slug (text) + year_month (YYYY-MM text) + cost_usd (numeric).
+    This allows the cost-export ingest job to correlate by Azure tag value (rac_app_slug)
+    without an extra join.
+    """
     __tablename__ = "cost_snapshot_monthly"
 
     id: Mapped[UUID] = mapped_column(
@@ -481,22 +492,24 @@ class CostSnapshotMonthly(Base):
         primary_key=True,
         server_default=func.text("uuidv7()"),
     )
-    app_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("app.id", ondelete="RESTRICT"),
-        nullable=False,
-    )
-    year: Mapped[int] = mapped_column(nullable=False)
-    month: Mapped[int] = mapped_column(nullable=False)
-    cost_usd: Mapped[float] = mapped_column(nullable=False)
+    app_slug: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    year_month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)  # YYYY-MM
+    cost_usd: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False, default=0)
+    untagged_usd: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     __table_args__ = (
-        UniqueConstraint("app_id", "year", "month", name="uq_cost_snapshot_app_ym"),
+        UniqueConstraint("app_slug", "year_month", name="uq_cost_snapshot_app_ym"),
     )
 
 
