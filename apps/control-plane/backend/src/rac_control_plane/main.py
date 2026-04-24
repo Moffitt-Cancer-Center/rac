@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from rac_control_plane.correlation import CorrelationIdMiddleware, get_correlation_id
 from rac_control_plane.errors import ApiError, render_error
 from rac_control_plane.logging_setup import configure_logging
+from rac_control_plane.metrics import configure_metrics
 from rac_control_plane.settings import get_settings
 
 logger = structlog.get_logger(__name__)
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):  # type: ignore
 
     # Startup
     configure_logging(settings)
+    configure_metrics(settings.otlp_endpoint)
     logger.info("RAC Control Plane starting", version="1.0.0", env=settings.env)
 
     yield
