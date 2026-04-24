@@ -34,6 +34,22 @@ manually, because:
 Each step is idempotent: re-running on an already-bootstrapped subscription
 picks up the existing apps/SP/creds/role by name rather than failing.
 
+## What users.sh does
+
+Creates a vanilla cloud-only Entra member user in the current tenant, for
+test-driving the RAC sign-in flow. Idempotent — if the UPN already exists,
+it reports and exits without modification. If `--password` is omitted, a
+20-char password meeting Entra's complexity rules is generated and printed
+once. By default the user must change password on first sign-in (override
+with `--no-force-change` for automated test accounts).
+
+Verifies that the UPN's domain component is one of the tenant's verified
+domains before attempting creation, and prints the valid alternatives on
+mismatch.
+
+This script is **not** invoked by `setup.sh` or `teardown.sh` — it's a
+separate utility for whoever is operating the demo.
+
 ## What bootstrap-kv.sh does
 
 1. Creates `rg-rac-bootstrap` (shared across environments).
@@ -78,6 +94,11 @@ az account set --subscription <SUBSCRIPTION_ID>
   --subscription <SUBSCRIPTION_ID> \
   --env dev \
   --domain rac-dev.rac.checkwithscience.com
+
+# 3. (Optional) Create test researchers for exercising the sign-in flow
+./scripts/demo-bootstrap/users.sh \
+  --upn testresearcher@<tenant-domain>.onmicrosoft.com \
+  --display-name "Test Researcher"
 
 # When done with the demo
 ./scripts/demo-bootstrap/teardown.sh \
