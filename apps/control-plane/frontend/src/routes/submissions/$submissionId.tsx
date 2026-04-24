@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { getSubmission } from '@/lib/api';
 import { ScanFindingsView } from '@/features/submissions/scan-findings-view';
+import { NudgesPanel } from '@/features/nudges/nudges-panel';
 import type { ScanResult } from '@/features/submissions/scan-findings-view';
 
 export const Route = createFileRoute('/submissions/$submissionId')({
@@ -178,6 +179,11 @@ function SubmissionDetailPage() {
           <ScanFindingsView scanResult={scanResult} />
         </div>
       )}
+
+      {/* Detection nudges — always shown so researcher can act on findings */}
+      <div className="rounded-md border border-gray-200 bg-white p-5">
+        <NudgesPanel submissionId={submissionId} />
+      </div>
     </div>
   );
 }
