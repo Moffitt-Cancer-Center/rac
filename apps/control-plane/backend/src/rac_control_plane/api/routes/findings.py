@@ -14,11 +14,11 @@ Endpoints:
        to awaiting_scan and emits a detection_resolved approval_event.
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from rac_control_plane.api.schemas.findings import (
@@ -34,12 +34,39 @@ from rac_control_plane.data.models import ApprovalEvent, Submission, SubmissionS
 from rac_control_plane.data.submission_repo import get_by_id
 from rac_control_plane.errors import ForbiddenError
 from rac_control_plane.services.detection.resolution import needs_user_action_resolved
+from rac_control_plane.services.submissions.fsm import (
+    SubmissionStatus as FsmStatus,
+)
 from rac_control_plane.services.submissions.fsm import transition
 from rac_control_plane.settings import get_settings
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/submissions", tags=["findings"])
+
+
+def _make_redispatch_fn(settings_snapshot: Any) -> Any:
+    """Build a dispatch callable for re-triggering the pipeline post-detection_resolved.
+
+    Returns an async callable (payload) → None, or None if dispatch is not configured.
+    """
+    from rac_control_plane.services.pipeline_dispatch import github as gh_dispatch
+
+    auth_token: str | None = None
+    if settings_snapshot.gh_pat:
+        auth_token = settings_snapshot.gh_pat.get_secret_value()
+
+    if not auth_token:
+        logger.warning("pipeline_redispatch_skipped_no_auth_token")
+        return None
+
+    owner = settings_snapshot.gh_pipeline_owner
+    repo = settings_snapshot.gh_pipeline_repo
+
+    async def _do_dispatch(payload: dict[str, Any]) -> None:
+        await gh_dispatch.dispatch(owner, repo, payload, auth_token=auth_token)
+
+    return _do_dispatch
 
 
 def _can_view(principal: Principal, submission: Submission) -> bool:
@@ -96,6 +123,7 @@ async def record_decision(
     finding_id: UUID,
     body: DecisionRequest,
     principal: Annotated[Principal, Depends(current_principal)],
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> DecisionResponse:
     """Record a researcher decision on a detection finding.
@@ -142,8 +170,8 @@ async def record_decision(
     resolved = needs_user_action_resolved(findings_with_decisions)
 
     if resolved and submission.status == SubmissionStatus.needs_user_action:
-        new_status = transition(submission.status, "detection_resolved")
-        submission.status = new_status
+        new_status = transition(FsmStatus(submission.status), "detection_resolved")
+        submission.status = new_status  # type: ignore[assignment]
         session.add(submission)
         await session.flush()
 
@@ -161,6 +189,34 @@ async def record_decision(
             submission_id=str(submission_id),
             actor=str(principal.oid),
         )
+
+        # Re-dispatch the pipeline now that all blocking findings are resolved.
+        settings = get_settings()
+        dispatch_fn = _make_redispatch_fn(settings)
+        if dispatch_fn is not None:
+            from rac_control_plane.services.pipeline_dispatch.payload import (
+                build_dispatch_payload,
+            )
+            secret_name = f"rac-pipeline-cb-{submission.id}"
+            # Build payload before session.commit() to avoid expired-attribute lazy loads.
+            payload = build_dispatch_payload(
+                submission,
+                callback_base_url=settings.callback_base_url,
+                callback_secret_name=secret_name,
+            )
+
+            async def _safe_dispatch(p: dict[str, Any]) -> None:
+                """Wrap dispatch so a GitHub error doesn't propagate to the client."""
+                try:
+                    await dispatch_fn(p)
+                except Exception as _exc:
+                    logger.error(
+                        "detection_resolved_redispatch_failed",
+                        submission_id=str(submission_id),
+                        error=str(_exc),
+                    )
+
+            background_tasks.add_task(_safe_dispatch, payload)
 
     # Commit the transaction so the GET immediately after sees the new data
     await session.commit()
