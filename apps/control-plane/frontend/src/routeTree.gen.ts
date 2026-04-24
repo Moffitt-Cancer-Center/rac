@@ -14,6 +14,7 @@ import { Route as SubmissionsIndexRouteImport } from './routes/submissions/index
 import { Route as SubmissionsNewRouteImport } from './routes/submissions/new'
 import { Route as SubmissionsSubmissionIdRouteImport } from './routes/submissions/$submissionId'
 import { Route as AdminWebhookSubscriptionsRouteImport } from './routes/admin/webhook-subscriptions'
+import { Route as AdminProvisioningRouteImport } from './routes/admin/provisioning'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -41,9 +42,15 @@ const AdminWebhookSubscriptionsRoute =
     path: '/admin/webhook-subscriptions',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdminProvisioningRoute = AdminProvisioningRouteImport.update({
+  id: '/admin/provisioning',
+  path: '/admin/provisioning',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin/provisioning': typeof AdminProvisioningRoute
   '/admin/webhook-subscriptions': typeof AdminWebhookSubscriptionsRoute
   '/submissions/$submissionId': typeof SubmissionsSubmissionIdRoute
   '/submissions/new': typeof SubmissionsNewRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin/provisioning': typeof AdminProvisioningRoute
   '/admin/webhook-subscriptions': typeof AdminWebhookSubscriptionsRoute
   '/submissions/$submissionId': typeof SubmissionsSubmissionIdRoute
   '/submissions/new': typeof SubmissionsNewRoute
@@ -59,6 +67,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin/provisioning': typeof AdminProvisioningRoute
   '/admin/webhook-subscriptions': typeof AdminWebhookSubscriptionsRoute
   '/submissions/$submissionId': typeof SubmissionsSubmissionIdRoute
   '/submissions/new': typeof SubmissionsNewRoute
@@ -68,6 +77,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin/provisioning'
     | '/admin/webhook-subscriptions'
     | '/submissions/$submissionId'
     | '/submissions/new'
@@ -75,6 +85,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin/provisioning'
     | '/admin/webhook-subscriptions'
     | '/submissions/$submissionId'
     | '/submissions/new'
@@ -82,6 +93,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/admin/provisioning'
     | '/admin/webhook-subscriptions'
     | '/submissions/$submissionId'
     | '/submissions/new'
@@ -90,6 +102,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminProvisioningRoute: typeof AdminProvisioningRoute
   AdminWebhookSubscriptionsRoute: typeof AdminWebhookSubscriptionsRoute
   SubmissionsSubmissionIdRoute: typeof SubmissionsSubmissionIdRoute
   SubmissionsNewRoute: typeof SubmissionsNewRoute
@@ -133,11 +146,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminWebhookSubscriptionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/provisioning': {
+      id: '/admin/provisioning'
+      path: '/admin/provisioning'
+      fullPath: '/admin/provisioning'
+      preLoaderRoute: typeof AdminProvisioningRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminProvisioningRoute: AdminProvisioningRoute,
   AdminWebhookSubscriptionsRoute: AdminWebhookSubscriptionsRoute,
   SubmissionsSubmissionIdRoute: SubmissionsSubmissionIdRoute,
   SubmissionsNewRoute: SubmissionsNewRoute,

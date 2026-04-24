@@ -12,6 +12,7 @@ from rac_control_plane.api.routes.agents import router as agents_router
 from rac_control_plane.api.routes.approvals import router as approvals_router
 from rac_control_plane.api.routes.findings import router as findings_router
 from rac_control_plane.api.routes.jobs import router as jobs_router
+from rac_control_plane.api.routes.provisioning import router as provisioning_router
 from rac_control_plane.api.routes.submissions import router as submissions_router
 from rac_control_plane.api.routes.webhook_subscriptions import router as webhook_subs_router
 from rac_control_plane.api.routes.webhooks import router as webhooks_router
@@ -172,6 +173,7 @@ def create_app() -> FastAPI:
     app.include_router(webhooks_router, prefix="")
     app.include_router(webhook_subs_router, prefix="")
     app.include_router(jobs_router, prefix="")
+    app.include_router(provisioning_router, prefix="")
 
     # Static file mount for React SPA (must be last)
     static_dir = Path(__file__).parent / "static"
