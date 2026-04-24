@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "14890310818540999079"
+      "templateHash": "16227934234778788125"
     }
   },
   "functions": [
@@ -193,6 +193,13 @@
       "defaultValue": true,
       "metadata": {
         "description": "Key Vault purge protection (false for dev, true for staging/prod)"
+      }
+    },
+    "controlPlaneImageName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Control Plane container image reference for scheduled jobs (e.g. acr.azurecr.io/rac-control-plane:latest). Leave empty to skip graph-sweep-job deployment."
       }
     },
     "kvSoftDeleteRetentionInDays": {
@@ -3325,6 +3332,174 @@
         "keyVault",
         "logAnalytics",
         "postgres",
+        "rg"
+      ]
+    },
+    "graphSweepJob": {
+      "condition": "[not(empty(parameters('controlPlaneImageName')))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-graph-sweep-job",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "managedEnvironmentId": {
+            "value": "[reference('acaEnvironment').outputs.envId.value]"
+          },
+          "imageName": {
+            "value": "[parameters('controlPlaneImageName')]"
+          },
+          "managedIdentityResourceId": {
+            "value": "[reference('managedIdentity').outputs.controlPlaneMiResourceId.value]"
+          },
+          "registryServer": {
+            "value": "[reference('acr').outputs.acrLoginServer.value]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "13444976849998087215"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the job resource"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "Deployment environment: dev | staging | prod"
+              }
+            },
+            "managedEnvironmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA managed environment resource ID"
+              }
+            },
+            "imageName": {
+              "type": "string",
+              "metadata": {
+                "description": "Full image reference, e.g. acr.azurecr.io/rac-control-plane:latest"
+              }
+            },
+            "managedIdentityResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "User-assigned managed identity resource ID"
+              }
+            },
+            "registryServer": {
+              "type": "string",
+              "metadata": {
+                "description": "ACR login server, e.g. acr.azurecr.io"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/jobs",
+              "apiVersion": "2024-03-01",
+              "name": "[format('rac-graph-sweep-{0}', parameters('racEnv'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('managedIdentityResourceId'))]": {}
+                }
+              },
+              "properties": {
+                "environmentId": "[parameters('managedEnvironmentId')]",
+                "configuration": {
+                  "triggerType": "Schedule",
+                  "replicaTimeout": 3600,
+                  "replicaRetryLimit": 1,
+                  "scheduleTriggerConfig": {
+                    "cronExpression": "0 2 * * *",
+                    "parallelism": 1,
+                    "replicaCompletionCount": 1
+                  },
+                  "secrets": [],
+                  "registries": [
+                    {
+                      "server": "[parameters('registryServer')]",
+                      "identity": "[parameters('managedIdentityResourceId')]"
+                    }
+                  ]
+                },
+                "template": {
+                  "containers": [
+                    {
+                      "name": "graph-sweep",
+                      "image": "[parameters('imageName')]",
+                      "command": [
+                        "python"
+                      ],
+                      "args": [
+                        "-m",
+                        "rac_control_plane.cli.graph_sweep"
+                      ],
+                      "resources": {
+                        "cpu": "[json('0.5')]",
+                        "memory": "1Gi"
+                      },
+                      "env": []
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "jobId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the scheduled job"
+              },
+              "value": "[resourceId('Microsoft.App/jobs', format('rac-graph-sweep-{0}', parameters('racEnv')))]"
+            },
+            "jobName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the scheduled job"
+              },
+              "value": "[format('rac-graph-sweep-{0}', parameters('racEnv'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "acaEnvironment",
+        "acr",
+        "managedIdentity",
         "rg"
       ]
     },

@@ -80,6 +80,9 @@ param pipelineTimeoutMinutes int = 120
 @description('Key Vault purge protection (false for dev, true for staging/prod)')
 param kvEnablePurgeProtection bool = true
 
+@description('Control Plane container image reference for scheduled jobs (e.g. acr.azurecr.io/rac-control-plane:latest). Leave empty to skip graph-sweep-job deployment.')
+param controlPlaneImageName string = ''
+
 @description('Key Vault soft-delete retention in days (7 for dev, 90 for staging/prod)')
 @minValue(7)
 @maxValue(90)
@@ -296,6 +299,23 @@ module alerts 'modules/alerts.bicep' = {
     kvId: keyVault.outputs.kvId
     logAnalyticsWorkspaceId: logAnalytics.outputs.workspaceId
     pipelineTimeoutMinutes: pipelineTimeoutMinutes
+    tags: commonTags
+  }
+}
+
+// ========== PHASE 5: GRAPH SWEEP SCHEDULED JOB ==========
+// Deploys only when controlPlaneImageName is provided (post-Phase-5 re-deploy).
+// The job runs nightly at 02:00 UTC to detect deactivated PIs (AC9.2).
+module graphSweepJob 'modules/graph-sweep-job.bicep' = if (!empty(controlPlaneImageName)) {
+  scope: rg
+  name: 'deploy-graph-sweep-job'
+  params: {
+    location: location
+    racEnv: racEnv
+    managedEnvironmentId: acaEnvironment.outputs.envId
+    imageName: controlPlaneImageName
+    managedIdentityResourceId: managedIdentity.outputs.controlPlaneMiResourceId
+    registryServer: acr.outputs.acrLoginServer
     tags: commonTags
   }
 }

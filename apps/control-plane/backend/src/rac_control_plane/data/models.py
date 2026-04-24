@@ -297,10 +297,10 @@ class ApprovalEvent(Base):
         primary_key=True,
         server_default=func.text("uuidv7()"),
     )
-    submission_id: Mapped[UUID] = mapped_column(
+    submission_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("submission.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,  # nullable since migration 0007: app-level events have no submission
         index=True,
     )
     kind: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -517,6 +517,82 @@ class SharedReferenceCatalog(Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class AppOwnershipFlag(Base):
+    """Append-only: flag raised when the nightly Graph sweep finds a PI
+    whose Entra account is deactivated or no longer exists.
+
+    Design note: this mirrors the detection_finding / detection_finding_decision
+    pattern — the flag row is never mutated; reviewer decisions are stored in
+    AppOwnershipFlagReview.  Migration 0007 REVOKEs UPDATE/DELETE for rac_app.
+
+    Verifies: rac-v1.AC9.2
+    """
+    __tablename__ = "app_ownership_flag"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.text("uuidv7()"),
+    )
+    app_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("app.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    pi_principal_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
+    reason: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )  # "not_found" | "account_disabled"
+    flagged_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class AppOwnershipFlagReview(Base):
+    """Append-only: reviewer decision on an AppOwnershipFlag.
+
+    The existence of a row here with flag_id=X means flag X has been reviewed.
+    The sweep considers a flag "open" when no matching review row exists.
+
+    Verifies: rac-v1.AC9.2, rac-v1.AC9.3 (transfer inserts a resolved_by_transfer review)
+    """
+    __tablename__ = "app_ownership_flag_review"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.text("uuidv7()"),
+    )
+    flag_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("app_ownership_flag.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    review_decision: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )  # e.g. "resolved_by_transfer", "acknowledged", "transferred"
+    reviewer_principal_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        nullable=False,
+    )
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class IdempotencyKey(Base):
