@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# RAC polyglot additions (not in GitHub Python template)
+node_modules/
+.vite/
+.pnpm-store/
+*.bicep.deployment.json
+.worktrees/
+.claude/
