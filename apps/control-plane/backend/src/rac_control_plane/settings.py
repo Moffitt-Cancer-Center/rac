@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     issuer: str = ""  # JWT iss claim — the Control Plane's public URL; empty in dev
     require_publication_for_public: bool = False  # gate public mode on publication DOI
 
+    # Asset handling (Phase 8)
+    researcher_uploads_container_name: str = "researcher-uploads"
+    external_fetch_timeout_seconds: float = 60.0
+    enforce_https_for_external_assets: bool = True
+
     # Observability
     otlp_endpoint: str = "http://localhost:4317"
     metrics_enabled: bool = False

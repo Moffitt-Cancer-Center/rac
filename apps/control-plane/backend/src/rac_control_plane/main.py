@@ -12,6 +12,7 @@ from rac_control_plane.api.routes.access_log import router as access_log_router
 from rac_control_plane.api.routes.access_mode import router as access_mode_router
 from rac_control_plane.api.routes.agents import router as agents_router
 from rac_control_plane.api.routes.approvals import router as approvals_router
+from rac_control_plane.api.routes.assets import router as assets_router
 from rac_control_plane.api.routes.cost import router as cost_router
 from rac_control_plane.api.routes.findings import router as findings_router
 from rac_control_plane.api.routes.jobs import router as jobs_router
@@ -173,6 +174,7 @@ def create_app() -> FastAPI:
     # Register routers
     app.include_router(submissions_router, prefix="")
     app.include_router(approvals_router, prefix="")
+    app.include_router(assets_router, prefix="")
     app.include_router(findings_router, prefix="")
     app.include_router(agents_router, prefix="")
     app.include_router(webhooks_router, prefix="")

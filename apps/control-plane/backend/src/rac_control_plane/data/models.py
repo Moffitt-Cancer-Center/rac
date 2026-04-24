@@ -163,7 +163,14 @@ class App(Base):
 
 
 class Asset(Base):
-    """File/artifact attached to app."""
+    """File/artifact attached to a submission (and eventually an app).
+
+    Phase 8 extends the Phase 2 placeholder with the full asset lifecycle schema.
+    Migration 0012 adds the new columns.
+
+    kind: upload | external_url | shared_reference
+    status: pending | ready | hash_mismatch | unreachable
+    """
     __tablename__ = "asset"
 
     id: Mapped[UUID] = mapped_column(
@@ -171,13 +178,31 @@ class Asset(Base):
         primary_key=True,
         server_default=func.text("uuidv7()"),
     )
-    app_id: Mapped[UUID] = mapped_column(
+    # Phase 2 FK — made nullable in migration 0012 (assets belong to submissions first)
+    app_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("app.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
+    )
+    # Phase 8 FK — the submission that owns this asset
+    submission_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("submission.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
     kind: Mapped[str] = mapped_column(String(50), nullable=False)
-    blob_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Phase 2 field — made nullable in migration 0012
+    blob_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Phase 8 fields
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mount_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(nullable=True)
+    blob_uri: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    expected_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    actual_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
