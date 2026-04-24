@@ -7,6 +7,8 @@ Endpoints:
 - GET /submissions: List submissions with pagination
 """
 
+import tempfile
+from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -22,7 +24,7 @@ from rac_control_plane.api.schemas.submissions import (
 from rac_control_plane.auth.dependencies import current_principal
 from rac_control_plane.auth.principal import Principal
 from rac_control_plane.data.db import get_session
-from rac_control_plane.data.models import SubmissionStatus
+from rac_control_plane.data.models import DetectionFinding, Submission, SubmissionStatus
 from rac_control_plane.data.submission_repo import (
     get_by_id,
     get_existing_slugs,
@@ -36,6 +38,42 @@ from rac_control_plane.settings import get_settings
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
+
+
+def _make_detection_fn(
+    principal_kind: str,
+    rules: dict[str, Any] | None = None,
+) -> Any:
+    """Build a detection_fn closure for use in create_submission.
+
+    Returns an async callable (session, submission) → list[DetectionFinding].
+
+    Args:
+        principal_kind: 'user' or 'agent' — drives AC4.5 FSM logic.
+        rules: Pre-loaded rules dict (from app.state.rules). If None,
+               load_rules() is called lazily inside the closure.
+    """
+    from rac_control_plane.detection.engine import run_detection
+
+    async def _do_detection(
+        session: AsyncSession, submission: Submission
+    ) -> list[DetectionFinding]:
+        from rac_control_plane.detection.discovery import load_rules as _load_rules
+
+        effective_rules = rules
+        if effective_rules is None:
+            effective_rules = _load_rules()
+
+        with tempfile.TemporaryDirectory(prefix="rac_detection_") as tmpdir:
+            return await run_detection(
+                session,
+                submission,
+                workdir=Path(tmpdir),
+                rules=effective_rules,
+                principal_kind=principal_kind,
+            )
+
+    return _do_detection
 
 
 def _build_dispatch_fn(
@@ -106,6 +144,20 @@ async def post_submission(
     # Build dispatch function from settings (None if not configured)
     dispatch_fn = _build_dispatch_fn(settings)
 
+    # Build detection function — source rules from app.state.rules if populated,
+    # else let _make_detection_fn call load_rules() lazily inside the closure.
+    # Use a local import to avoid a circular import at module level.
+    import rac_control_plane.main as _main_mod  # noqa: PLC0415
+    _app_state = getattr(getattr(_main_mod, "app", None), "state", None)
+    _cached_rules: dict[str, Any] | None = (
+        getattr(_app_state, "rules", None) if _app_state else None
+    )
+
+    detection_fn = _make_detection_fn(
+        principal_kind=principal.kind,
+        rules=_cached_rules,
+    )
+
     # Get existing slugs to avoid collisions
     existing_slugs = await get_existing_slugs(session)
 
@@ -118,10 +170,14 @@ async def post_submission(
         existing_slugs,
         emit_submission_metric=lambda status: submission_counter.add(1, {"status": status}),
         dispatch_fn=dispatch_fn,
+        detection_fn=detection_fn,
     )
 
     # Commit the transaction
     await session.commit()
+    # Refresh server-generated fields (updated_at via onupdate, server_default id).
+    # Needed when detection_fn has issued an UPDATE that expires server-side columns.
+    await session.refresh(submission)
 
     return SubmissionResponse(
         id=submission.id,

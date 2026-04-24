@@ -42,6 +42,16 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
                 error=str(exc),
             )
 
+    # Pre-load detection rules so routes don't pay discovery cost per request.
+    try:
+        from rac_control_plane.detection.discovery import load_rules
+        app.state.rules = load_rules()
+        logger.info("detection_rules_loaded", rule_count=len(app.state.rules))
+    except Exception as exc:
+        # Non-fatal: routes fall back to lazy load_rules() on each request.
+        logger.warning("detection_rules_load_failed", error=str(exc))
+        app.state.rules = None
+
     logger.info("RAC Control Plane starting", version="1.0.0", env=settings.env)
 
     yield

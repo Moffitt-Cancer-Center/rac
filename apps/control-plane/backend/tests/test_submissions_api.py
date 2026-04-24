@@ -18,15 +18,17 @@ visible to subsequent queries on the same connection.  All DB assertions are
 therefore scoped by the test-specific OID.
 """
 
+from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest
 import respx
 from httpx import Response
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from rac_control_plane.data.agent_repo import AgentRepo
-from rac_control_plane.data.models import ApprovalEvent, Submission
+from rac_control_plane.data.models import ApprovalEvent, DetectionFinding, Submission, SubmissionStatus
 
 
 # ---------------------------------------------------------------------------
@@ -348,3 +350,108 @@ async def test_submission_disabled_agent_returns_403(client, db_session, db_setu
     result = await db_session.scalars(stmt)
     rows = list(result)
     assert rows == [], f"Expected no submission rows for {sp_uuid}, found {len(rows)}"
+
+
+# ---------------------------------------------------------------------------
+# Test 8 — Critical 1: Agent submission with warn finding → needs_user_action
+#           and DetectionFinding row exists
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_agent_submission_with_warn_finding_transitions_to_needs_user_action(
+    client, db_session: AsyncSession, db_setup, mock_oidc
+) -> None:
+    """Critical 1 (Phase 4 review): detection_fn is wired; agent + warn finding → needs_user_action.
+
+    Strategy: monkeypatch _make_detection_fn in the submissions route to return
+    a fake that inserts one warn DetectionFinding and transitions the submission
+    to needs_user_action, without performing a real git clone.
+    """
+    from rac_control_plane.data.models import (
+        ApprovalEvent,
+        DetectionFinding,
+        SubmissionStatus,
+    )
+    from rac_control_plane.services.submissions.fsm import transition as fsm_transition
+
+    test_app_id = str(uuid4())
+    sp_uuid = uuid4()
+
+    # Insert enabled agent via db_setup
+    repo = AgentRepo(db_setup)
+    await repo.create_agent(
+        name="Warn-Finding Agent",
+        kind="cli",
+        entra_app_id=test_app_id,
+        service_principal_id=sp_uuid,
+        enabled=True,
+    )
+    await db_setup.commit()
+
+    token = mock_oidc.issue_client_credentials_token(app_id=test_app_id, scopes=["submit"])
+    headers = {"Authorization": f"Bearer {token}"}
+    body = _valid_body()
+
+    # Build a fake detection_fn that inserts one warn finding and transitions
+    # the submission to needs_user_action (mimics what run_detection does for agents).
+    async def _fake_detection_fn(session: AsyncSession, submission: Submission) -> list[DetectionFinding]:
+        finding = DetectionFinding(
+            submission_id=submission.id,
+            rule_id="test/warn_rule",
+            rule_version=1,
+            severity="warn",
+            title="Test warn finding",
+            detail="Injected by test fake detection_fn",
+        )
+        session.add(finding)
+        await session.flush()
+
+        # Transition the submission to needs_user_action (agent + warn → blocked)
+        from rac_control_plane.services.submissions.fsm import SubmissionStatus as FsmStatus
+        new_status = fsm_transition(FsmStatus(submission.status), "detection_needs_user_action")
+        submission.status = new_status  # type: ignore[assignment]
+        session.add(submission)
+        await session.flush()
+
+        approval_evt = ApprovalEvent(
+            submission_id=submission.id,
+            kind="detection_needs_user_action",
+            actor_principal_id=submission.submitter_principal_id,
+        )
+        session.add(approval_evt)
+        await session.flush()
+        return [finding]
+
+    with (
+        patch(
+            "rac_control_plane.api.routes.submissions._make_detection_fn",
+            return_value=_fake_detection_fn,
+        ),
+        _mock_github_success() as github_mock,
+    ):
+        github_mock.start()
+        response = await client.post("/submissions", json=body, headers=headers)
+        github_mock.stop()
+
+    assert response.status_code == 201, response.text
+    data = response.json()
+    sub_id = UUID(data["id"])
+
+    # Submission status must be needs_user_action (detection blocked it)
+    assert data["status"] == "needs_user_action", (
+        f"Expected needs_user_action but got {data['status']}"
+    )
+
+    # Verify in DB
+    sub_stmt = select(Submission).where(Submission.id == sub_id)
+    sub_row = await db_session.scalar(sub_stmt)
+    assert sub_row is not None
+    assert sub_row.status == SubmissionStatus.needs_user_action
+
+    # DetectionFinding row exists
+    finding_stmt = select(DetectionFinding).where(DetectionFinding.submission_id == sub_id)
+    finding_result = await db_session.scalars(finding_stmt)
+    findings = list(finding_result)
+    assert len(findings) == 1, f"Expected 1 DetectionFinding, got {len(findings)}"
+    assert findings[0].rule_id == "test/warn_rule"
+    assert findings[0].severity == "warn"
