@@ -1,4 +1,4 @@
-.PHONY: help dev dev-up dev-down test lint migrate build clean
+.PHONY: help dev dev-up dev-down test lint migrate build static clean
 
 help:
 	@echo "RAC Control Plane development commands:"
@@ -37,9 +37,16 @@ lint:
 migrate:
 	cd backend && uv run alembic upgrade head
 
-# Build Docker image
+# Build Docker image (context must be repo root so the Dockerfile can COPY
+# apps/control-plane/{frontend,backend}/... paths)
 build:
-	docker build -t rac-control-plane:dev .
+	docker build -t rac-control-plane:dev -f Dockerfile ../..
+
+# Build frontend and copy into backend static mount for local non-Docker dev
+static:
+	cd frontend && pnpm build
+	rm -rf backend/src/rac_control_plane/static/*
+	cp -r frontend/dist/* backend/src/rac_control_plane/static/
 
 # Clean up
 clean:

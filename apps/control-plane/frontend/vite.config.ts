@@ -14,7 +14,9 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../backend/src/rac_control_plane/static',
+    // Dockerfile's fe-builder stage COPYs from /app/frontend/dist into the backend
+    // static mount. For local dev, run `make static` to copy into the backend tree.
+    outDir: './dist',
     emptyOutDir: true,
     sourcemap: true,
   },
