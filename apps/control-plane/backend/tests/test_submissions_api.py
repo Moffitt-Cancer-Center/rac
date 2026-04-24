@@ -455,3 +455,47 @@ async def test_agent_submission_with_warn_finding_transitions_to_needs_user_acti
     assert len(findings) == 1, f"Expected 1 DetectionFinding, got {len(findings)}"
     assert findings[0].rule_id == "test/warn_rule"
     assert findings[0].severity == "warn"
+
+
+# ---------------------------------------------------------------------------
+# Test 9 — AC9.1: Invalid PI (not_found) returns 422 with code='invalid_pi'
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_submission_invalid_pi_returns_422(client, db_session, mock_oidc):
+    """AC9.1: Submission with unknown PI OID returns 422 and no row created.
+
+    Patches graph_gateway.get_user to return None (user not found in tenant).
+    """
+    test_user_oid = uuid4()
+    token = mock_oidc.issue_user_token(oid=test_user_oid, roles=[])
+    headers = {"Authorization": f"Bearer {token}"}
+    unknown_pi_id = uuid4()
+    body = _valid_body(pi_principal_id=unknown_pi_id)
+
+    async def _return_none(oid, *, client=None):  # type: ignore[misc]
+        return None
+
+    with patch(
+        "rac_control_plane.services.ownership.graph_gateway.get_user",
+        side_effect=_return_none,
+    ), _mock_github_success() as mock:
+        mock.start()
+        response = await client.post("/submissions", json=body, headers=headers)
+        mock.stop()
+
+    assert response.status_code == 422, response.text
+    data = response.json()
+    assert data.get("code") == "invalid_pi", (
+        f"Expected code='invalid_pi', got: {data}"
+    )
+    assert "not_found" in data.get("message", ""), (
+        f"Expected 'not_found' in message, got: {data.get('message')}"
+    )
+
+    # No submission row created (PI check runs before DB write)
+    stmt = select(Submission).where(
+        Submission.submitter_principal_id == test_user_oid
+    )
+    result = await db_session.scalars(stmt)
+    rows = list(result)
+    assert rows == [], f"Expected no submission rows for {test_user_oid}, found {len(rows)}"

@@ -9,6 +9,7 @@ the DB row is committed.
 
 from collections.abc import Awaitable, Callable
 from typing import Any
+from uuid import UUID
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +24,7 @@ from rac_control_plane.data.models import (
 )
 from rac_control_plane.errors import ValidationApiError
 from rac_control_plane.services.github_validation import validate_repo
+from rac_control_plane.services.ownership.pi_validation import ValidationResult
 from rac_control_plane.services.submissions.slug import derive_slug
 
 logger = structlog.get_logger(__name__)
@@ -39,15 +41,17 @@ async def create_submission(
     detection_fn: (
         Callable[[AsyncSession, Submission], Awaitable[list[DetectionFinding]]] | None
     ) = None,
+    validate_pi_fn: Callable[[UUID], Awaitable[ValidationResult]] | None = None,
 ) -> Submission:
     """Create a new submission with validation and persistence.
 
     Orchestrates:
-    1. Slug derivation (pure)
-    2. GitHub repository validation (impure, raises on error)
-    3. Database write with approval_event (impure)
-    4. Metric emission (impure, via callback)
-    5. Pipeline dispatch trigger (impure, via dispatch_fn callback)
+    1. PI validation via Microsoft Graph (impure, raises on invalid PI)
+    2. Slug derivation (pure)
+    3. GitHub repository validation (impure, raises on error)
+    4. Database write with approval_event (impure)
+    5. Metric emission (impure, via callback)
+    6. Pipeline dispatch trigger (impure, via dispatch_fn callback)
 
     Args:
         session: SQLAlchemy async session
@@ -60,18 +64,33 @@ async def create_submission(
                      triggers the GitHub repository_dispatch event.  When None, no
                      dispatch is attempted (used in legacy code paths and tests that
                      do not exercise the pipeline).
+        validate_pi_fn: Optional async callable that validates the PI OID against
+                        Microsoft Graph.  Called with ``request.pi_principal_id``
+                        before the GitHub repo check.  When None, PI validation is
+                        skipped (used in tests and legacy code paths).
 
     Returns:
         The created Submission ORM object
 
     Raises:
-        ValidationApiError: If repository not found, validation fails, or payload
-                            is too large for GitHub dispatch (pipeline_payload_too_large).
+        ValidationApiError: If PI is invalid, repository not found, validation fails,
+                            or payload is too large for GitHub dispatch.
     """
-    # Step 1: Derive slug (pure)
+    # Step 1: Validate PI via Graph (impure, optional, may raise)
+    if validate_pi_fn is not None:
+        from rac_control_plane.services.ownership.pi_validation import Invalid
+        pi_result = await validate_pi_fn(request.pi_principal_id)
+        if isinstance(pi_result, Invalid):
+            raise ValidationApiError(
+                "invalid_pi",
+                f"PI {request.pi_principal_id} is not a current Entra principal:"
+                f" {pi_result.reason}",
+            )
+
+    # Step 2: Derive slug (pure)
     slug = derive_slug(request.paper_title, str(request.github_repo_url), existing_slugs)
 
-    # Step 2: Validate GitHub repository (impure, may raise)
+    # Step 3: Validate GitHub repository (impure, may raise)
     await validate_repo(
         request.github_repo_url,
         request.git_ref,

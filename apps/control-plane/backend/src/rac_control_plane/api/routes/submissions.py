@@ -161,6 +161,13 @@ async def post_submission(
     # Get existing slugs to avoid collisions
     existing_slugs = await get_existing_slugs(session)
 
+    # Build PI validation function closure
+    from rac_control_plane.services.ownership import graph_gateway, pi_validation
+
+    async def _validate_pi(oid: Any) -> Any:
+        user = await graph_gateway.get_user(oid)
+        return pi_validation.is_valid_pi(user)
+
     # Create submission (may raise ValidationApiError)
     # Pass metric callback to emit submission counter with the target status
     submission = await create_submission(
@@ -171,6 +178,7 @@ async def post_submission(
         emit_submission_metric=lambda status: submission_counter.add(1, {"status": status}),
         dispatch_fn=dispatch_fn,
         detection_fn=detection_fn,
+        validate_pi_fn=_validate_pi,
     )
 
     # Commit the transaction
