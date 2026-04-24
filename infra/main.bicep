@@ -17,14 +17,19 @@ param location string
 @description('Entra tenant ID for OIDC issuer validation')
 param idpTenantId string
 
-@description('Globally unique ACR name (3-50 alphanumeric)')
-param acrName string
+// Globally-unique names default to a subscription-scoped hash so demo deploys
+// in different subscriptions don't collide. Override in <env>.bicepparam only
+// if you need a specific name (institutional branding, vanity URL, etc.).
+// Hash is trimmed to 10 chars so the storage account name stays within its
+// 24-char limit even for longer env names like "staging" (rac+staging+st+10=22).
+@description('Globally unique ACR name (3-50 alphanumeric, no hyphens)')
+param acrName string = 'rac${racEnv}acr${substring(uniqueString(subscription().subscriptionId, racEnv), 0, 10)}'
 
 @description('Globally unique Storage account name (3-24 lowercase alphanumeric)')
-param storageAccountName string
+param storageAccountName string = 'rac${racEnv}st${substring(uniqueString(subscription().subscriptionId, racEnv), 0, 10)}'
 
-@description('Globally unique Postgres server name')
-param pgServerName string
+@description('Globally unique Postgres server name (hyphens allowed)')
+param pgServerName string = 'rac-${racEnv}-pg-${substring(uniqueString(subscription().subscriptionId, racEnv), 0, 10)}'
 
 @description('Postgres admin password. MUST come from Key Vault reference in bicepparam; never inline.')
 @secure()

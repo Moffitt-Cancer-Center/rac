@@ -5,9 +5,9 @@ param racEnv = 'dev'
 param parentDomain = 'rac-dev.rac.checkwithscience.com'
 param location = 'eastus'
 param idpTenantId = 'f64ec93a-c5a6-4ba3-afca-8b10d684f3c1'
-param acrName = 'racdevacr001'
-param storageAccountName = 'racdevst001'
-param pgServerName = 'rac-dev-pg-cws'
+// acrName, storageAccountName, pgServerName intentionally unset — they default
+// to subscription-scoped hashes in main.bicep. Override only if a specific
+// name is required for institutional reasons.
 param pgAdminPassword = readEnvironmentVariable('RAC_PG_ADMIN_PASSWORD')
 param appGwTlsCertKvSecretId = readEnvironmentVariable('RAC_APPGW_TLS_CERT_KV_SECRET_ID')
 param controlPlaneIdentityPrincipalId = ''
