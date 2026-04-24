@@ -51,7 +51,16 @@ async def revoke_token(
     if token_row is None:
         raise NotFoundError(public_message=f"Reviewer token {jti} not found.")
 
-    # 2. INSERT revoked_token (append-only)
+    # 2. Idempotency guard: if already revoked, return silently. A caller that
+    # retries a DELETE after a network timeout must not receive a 500 from
+    # the UNIQUE constraint on revoked_token.jti. AC7.2 cares about "revoked
+    # within 60s" — being revoked twice is equivalent to being revoked once.
+    existing_stmt = select(RevokedToken).where(RevokedToken.jti == str(jti))
+    existing_result = await session.execute(existing_stmt)
+    if existing_result.scalar_one_or_none() is not None:
+        return
+
+    # 3. INSERT revoked_token (append-only)
     revoked = RevokedToken(
         jti=str(jti),
         revoked_by_principal_id=actor_principal_id,

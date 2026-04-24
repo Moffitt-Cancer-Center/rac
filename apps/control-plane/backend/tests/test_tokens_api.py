@@ -56,8 +56,8 @@ def patch_token_deps(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = make_test_settings()
 
     monkeypatch.setattr(
-        "rac_control_plane.api.routes.tokens._test_signer_override",
-        _raw_signer,
+        "rac_control_plane.api.routes.tokens._build_kv_signer",
+        lambda _slug, _settings: _raw_signer,
     )
     monkeypatch.setattr(
         "rac_control_plane.services.tokens.issuer.get_settings",

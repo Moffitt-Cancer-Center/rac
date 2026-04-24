@@ -9,7 +9,7 @@ DELETE /apps/{app_id}/tokens/{jti}   — revoke a token
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 import structlog
@@ -38,9 +38,21 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/apps", tags=["tokens"])
 
-# Test-only: set this to an async callable (digest: bytes) -> bytes to bypass KV.
-# In production this is always None and the real KV signer is used.
-_test_signer_override: Callable[[bytes], Awaitable[bytes]] | None = None
+
+def _build_kv_signer(
+    app_slug: str, settings: Any
+) -> Callable[[bytes], Awaitable[bytes]] | None:
+    """Factory for the Key Vault signer callable.
+
+    Production: returns an async callable that signs via CryptographyClient.
+    Tests: monkeypatch this function to return a local signer. This keeps the
+    test seam out of the module's top-level state.
+
+    Returns None to defer signer construction to issuer.py (which builds one
+    from settings if not supplied). In production paths that want explicit
+    KV binding, wire it here; for v1 we let the issuer do it.
+    """
+    return None
 
 
 async def _get_app_or_404(session: AsyncSession, app_id: UUID) -> App:
@@ -117,8 +129,9 @@ async def mint_token(
     except RuntimeError:
         sig_format = None  # issuer will default to RAW_R_S
 
-    # Use test signer override if set (test-only); otherwise None → production KV path
-    signer = _test_signer_override
+    # Tests monkeypatch _build_kv_signer to inject a local signer; production
+    # path returns None and issuer.py builds a KV-backed signer itself.
+    signer = _build_kv_signer(app.slug, settings)
 
     issued = await issue_reviewer_token(
         session,

@@ -46,45 +46,6 @@ def _is_owner_or_admin(
     return False
 
 
-def can_set_public(
-    app: App,
-    principal: Principal,
-    submitter_principal_id: UUID | None = None,
-    *,
-    admin_role: str = "it_approver",
-    require_publication: bool = False,
-) -> ValidationResult:
-    """Determine whether principal may set app.access_mode = 'public'.
-
-    Rules:
-      1. Principal must be the PI, current submitter, or admin (not_authorized).
-      2. The app's current submission must be in 'deployed' state (not_deployed).
-      3. If require_publication=True, the submission must have a publication_doi
-         (publication_required) — reserved for future use; no such field yet.
-
-    Args:
-        app: The App ORM object (not loaded fresh — must be passed by caller).
-        principal: The authenticated principal making the request.
-        submitter_principal_id: submitter_principal_id from the current submission.
-        admin_role: The role name that grants admin access.
-        require_publication: If True, requires a publication DOI (not enforced in v1).
-
-    Returns:
-        Ok() if the toggle is allowed, Invalid(reason) otherwise.
-    """
-    if not _is_owner_or_admin(app, principal, submitter_principal_id, admin_role=admin_role):
-        return Invalid(reason="not_authorized")
-
-    # The app's current_submission status must be 'deployed'.
-    # We infer this from the app.current_submission_id being set and the caller
-    # passing a status. Since App doesn't carry status directly, the shell layer
-    # passes the status via a separate argument. We use a convention: the caller
-    # puts the submission_status into the App model's check via a helper.
-    # For purity, we accept submission_status as an optional extra param below.
-    # (See _can_set_public_with_status for the actual check.)
-    return Ok()
-
-
 def can_set_public_with_status(
     app: App,
     principal: Principal,
