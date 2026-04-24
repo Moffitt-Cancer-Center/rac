@@ -11,11 +11,10 @@ Orchestrates:
 from __future__ import annotations
 
 import hashlib
-import json
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Awaitable, Callable
 from uuid import UUID
 
 import structlog
@@ -190,10 +189,10 @@ def _build_kv_signer(
     Uses azure-identity DefaultAzureCredential and azure-keyvault-keys
     CryptographyClient.sign(ES256, digest).
     """
-    from azure.identity.aio import DefaultAzureCredential  # type: ignore[import-untyped]
-    from azure.keyvault.keys.aio import KeyClient  # type: ignore[import-untyped]
-    from azure.keyvault.keys.crypto.aio import CryptographyClient  # type: ignore[import-untyped]
-    from azure.keyvault.keys.crypto import SignatureAlgorithm  # type: ignore[import-untyped]
+    from azure.identity.aio import DefaultAzureCredential
+    from azure.keyvault.keys.aio import KeyClient
+    from azure.keyvault.keys.crypto import SignatureAlgorithm
+    from azure.keyvault.keys.crypto.aio import CryptographyClient
 
     key_name = f"rac-app-{app_slug}-v1"
 

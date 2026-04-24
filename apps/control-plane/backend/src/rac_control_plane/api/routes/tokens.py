@@ -8,6 +8,7 @@ DELETE /apps/{app_id}/tokens/{jti}   — revoke a token
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Annotated
 from uuid import UUID
 
@@ -28,7 +29,7 @@ from rac_control_plane.data.db import get_session
 from rac_control_plane.data.models import App, Submission
 from rac_control_plane.errors import ForbiddenError, NotFoundError
 from rac_control_plane.services.tokens.issuer import issue_reviewer_token
-from rac_control_plane.services.tokens.key_probe import SignatureFormat, _reset_for_tests
+from rac_control_plane.services.tokens.key_probe import SignatureFormat
 from rac_control_plane.services.tokens.listing import list_tokens_for_app
 from rac_control_plane.services.tokens.revoke import revoke_token
 from rac_control_plane.settings import get_settings
@@ -39,7 +40,7 @@ router = APIRouter(prefix="/apps", tags=["tokens"])
 
 # Test-only: set this to an async callable (digest: bytes) -> bytes to bypass KV.
 # In production this is always None and the real KV signer is used.
-_test_signer_override: object | None = None
+_test_signer_override: Callable[[bytes], Awaitable[bytes]] | None = None
 
 
 async def _get_app_or_404(session: AsyncSession, app_id: UUID) -> App:
@@ -117,7 +118,7 @@ async def mint_token(
         sig_format = None  # issuer will default to RAW_R_S
 
     # Use test signer override if set (test-only); otherwise None → production KV path
-    signer = _test_signer_override  # type: ignore[assignment]
+    signer = _test_signer_override
 
     issued = await issue_reviewer_token(
         session,

@@ -14,8 +14,8 @@ must restart the Control Plane container.  Document in docs/runbooks/bootstrap.m
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import Any, Callable, Awaitable
 
 import structlog
 

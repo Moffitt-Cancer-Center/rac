@@ -19,7 +19,6 @@ from rac_control_plane.data.models import AccessMode, App, ApprovalEvent, Submis
 from rac_control_plane.errors import ForbiddenError, NotFoundError, ValidationApiError
 from rac_control_plane.services.access_mode.validation import (
     Invalid,
-    Ok,
     can_set_public_with_status,
     can_set_token_required,
 )

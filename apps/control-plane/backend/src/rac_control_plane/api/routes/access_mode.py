@@ -6,7 +6,7 @@ POST /apps/{app_id}/access-mode — flip between 'public' and 'token_required'
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends

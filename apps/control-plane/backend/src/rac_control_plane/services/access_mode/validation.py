@@ -12,7 +12,7 @@ from typing import Literal
 from uuid import UUID
 
 from rac_control_plane.auth.principal import Principal
-from rac_control_plane.data.models import AccessMode, App, SubmissionStatus
+from rac_control_plane.data.models import App, SubmissionStatus
 
 
 @dataclass(frozen=True)
