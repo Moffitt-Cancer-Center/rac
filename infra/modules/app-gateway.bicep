@@ -20,6 +20,9 @@ param tlsCertKvSecretId string
 @description('App Gateway managed identity resource ID')
 param appGwMiResourceId string
 
+@description('Shim internal FQDN to use as the backend pool target (e.g. rac-shim-dev.internal.xxx.azurecontainerapps.io). Leave empty on first deploy — the placeholder FQDN is preserved until the shim ACA app is deployed.')
+param shimFqdn string = ''
+
 @description('Resource tags')
 param tags object
 
@@ -125,7 +128,10 @@ resource appGateway 'Microsoft.Network/applicationGateways@2023-11-01' = {
         properties: {
           backendAddresses: [
             {
-              fqdn: 'shim.internal.eastus.azurecontainerapps.io' // Placeholder; will be parameterized in Phase 2
+              // When shimFqdn is supplied (post-Phase-6 deploy), route to the shim's
+              // ACA internal FQDN.  On first deploy (shimFqdn empty), the placeholder
+              // is preserved so the gateway can be provisioned before the shim exists.
+              fqdn: empty(shimFqdn) ? 'shim.internal.eastus.azurecontainerapps.io' : shimFqdn
             }
           ]
         }
