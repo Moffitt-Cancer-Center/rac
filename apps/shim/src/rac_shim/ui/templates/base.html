@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>$title — $institution_name</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 4em auto; padding: 0 1em; color: #1a1a1a; }
+    .brand { display: flex; align-items: center; gap: 1em; margin-bottom: 2em; }
+    .brand img { height: 48px; }
+    .error h1 { color: #b00020; }
+    .error, .interstitial { background: #f8f8f8; border-left: 4px solid #b00020; padding: 1em 1.5em; border-radius: 4px; }
+    .interstitial { border-left-color: #0066cc; }
+    .corr { font-family: monospace; font-size: 0.85em; color: #666; margin-top: 2em; }
+    .public-banner { background: #fff3cd; padding: 0.5em 1em; border-radius: 4px; margin-bottom: 1em; }
+    .spinner { display: inline-block; width: 2em; height: 2em; border: 3px solid #cce; border-top-color: #0066cc; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 0.5em; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="brand">
+    ${brand_logo_html}
+    <span>$institution_name</span>
+  </div>
+  $body
+  <div class="corr">Reference ID: $correlation_id</div>
+</body>
+</html>

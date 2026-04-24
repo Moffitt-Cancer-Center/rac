@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Waking up — $institution_name</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 4em auto; padding: 0 1em; color: #1a1a1a; }
+    .brand { display: flex; align-items: center; gap: 1em; margin-bottom: 2em; }
+    .brand img { height: 48px; }
+    .interstitial { background: #f8f8f8; border-left: 4px solid #0066cc; padding: 1em 1.5em; border-radius: 4px; }
+    .interstitial h1 { color: #0066cc; }
+    .corr { font-family: monospace; font-size: 0.85em; color: #666; margin-top: 2em; }
+    .public-banner { background: #fff3cd; padding: 0.5em 1em; border-radius: 4px; margin-bottom: 1em; }
+    .spinner { display: inline-block; width: 1.5em; height: 1.5em; border: 3px solid #cce; border-top-color: #0066cc; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 0.5em; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="brand">
+    ${brand_logo_html}
+    <span>$institution_name</span>
+  </div>
+  ${public_banner_html}
+  <div class="interstitial">
+    <h1><span class="spinner" aria-hidden="true"></span>Waking up — please wait</h1>
+    <p>The application is starting. You will be redirected automatically in a few seconds.</p>
+  </div>
+  <div class="corr">Reference ID: $correlation_id</div>
+  <script>
+    (function() {
+      var wakeUrl = "$wake_path";
+      var deadline = Date.now() + 15000;
+      function reload() { window.location.href = window.location.href; }
+      fetch(wakeUrl, { method: "GET", cache: "no-store" })
+        .then(function() { reload(); })
+        .catch(function() {
+          var remaining = deadline - Date.now();
+          if (remaining > 0) { setTimeout(reload, Math.min(remaining, 2000)); }
+          else { reload(); }
+        });
+      setTimeout(reload, 15000);
+    })();
+  </script>
+</body>
+</html>
