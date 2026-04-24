@@ -46,6 +46,9 @@ from rac_control_plane.services.submissions.fsm import (
         (SubmissionStatus.needs_assistance, "user_resolves_action_needed", SubmissionStatus.awaiting_research_review),
         # From it_rejected
         (SubmissionStatus.it_rejected, "user_requests_assistance", SubmissionStatus.needs_assistance),
+        # Phase 4 detection-engine transitions
+        (SubmissionStatus.awaiting_scan, "detection_needs_user_action", SubmissionStatus.needs_user_action),
+        (SubmissionStatus.needs_user_action, "detection_resolved", SubmissionStatus.awaiting_scan),
     ],
 )
 def test_valid_transitions(current, event, expected):
@@ -67,6 +70,8 @@ def test_valid_transitions(current, event, expected):
         (SubmissionStatus.it_rejected, "research_approved"),
         (SubmissionStatus.research_rejected, "research_approved"),
         (SubmissionStatus.scan_rejected, "research_approved"),
+        # Phase 4: awaiting_scan cannot accept detection_resolved (only needs_user_action can)
+        (SubmissionStatus.awaiting_scan, "detection_resolved"),
     ],
 )
 def test_invalid_transitions(current, event):
