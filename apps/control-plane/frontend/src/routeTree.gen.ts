@@ -19,6 +19,9 @@ import { Route as AdminWebhookSubscriptionsRouteImport } from './routes/admin/we
 import { Route as AdminProvisioningRouteImport } from './routes/admin/provisioning'
 import { Route as AdminOwnershipRouteImport } from './routes/admin/ownership'
 import { Route as AdminCostRouteImport } from './routes/admin/cost'
+import { Route as AppsAppIdTokensRouteImport } from './routes/apps/$appId/tokens'
+import { Route as AppsAppIdAccessModeRouteImport } from './routes/apps/$appId/access-mode'
+import { Route as AppsAppIdAccessLogRouteImport } from './routes/apps/$appId/access-log'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -72,6 +75,21 @@ const AdminCostRoute = AdminCostRouteImport.update({
   path: '/admin/cost',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppsAppIdTokensRoute = AppsAppIdTokensRouteImport.update({
+  id: '/apps/$appId/tokens',
+  path: '/apps/$appId/tokens',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppsAppIdAccessModeRoute = AppsAppIdAccessModeRouteImport.update({
+  id: '/apps/$appId/access-mode',
+  path: '/apps/$appId/access-mode',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppsAppIdAccessLogRoute = AppsAppIdAccessLogRouteImport.update({
+  id: '/apps/$appId/access-log',
+  path: '/apps/$appId/access-log',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -84,6 +102,9 @@ export interface FileRoutesByFullPath {
   '/submissions/new': typeof SubmissionsNewRoute
   '/approval-queue/': typeof ApprovalQueueIndexRoute
   '/submissions/': typeof SubmissionsIndexRoute
+  '/apps/$appId/access-log': typeof AppsAppIdAccessLogRoute
+  '/apps/$appId/access-mode': typeof AppsAppIdAccessModeRoute
+  '/apps/$appId/tokens': typeof AppsAppIdTokensRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -96,6 +117,9 @@ export interface FileRoutesByTo {
   '/submissions/new': typeof SubmissionsNewRoute
   '/approval-queue': typeof ApprovalQueueIndexRoute
   '/submissions': typeof SubmissionsIndexRoute
+  '/apps/$appId/access-log': typeof AppsAppIdAccessLogRoute
+  '/apps/$appId/access-mode': typeof AppsAppIdAccessModeRoute
+  '/apps/$appId/tokens': typeof AppsAppIdTokensRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -109,6 +133,9 @@ export interface FileRoutesById {
   '/submissions/new': typeof SubmissionsNewRoute
   '/approval-queue/': typeof ApprovalQueueIndexRoute
   '/submissions/': typeof SubmissionsIndexRoute
+  '/apps/$appId/access-log': typeof AppsAppIdAccessLogRoute
+  '/apps/$appId/access-mode': typeof AppsAppIdAccessModeRoute
+  '/apps/$appId/tokens': typeof AppsAppIdTokensRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -123,6 +150,9 @@ export interface FileRouteTypes {
     | '/submissions/new'
     | '/approval-queue/'
     | '/submissions/'
+    | '/apps/$appId/access-log'
+    | '/apps/$appId/access-mode'
+    | '/apps/$appId/tokens'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -135,6 +165,9 @@ export interface FileRouteTypes {
     | '/submissions/new'
     | '/approval-queue'
     | '/submissions'
+    | '/apps/$appId/access-log'
+    | '/apps/$appId/access-mode'
+    | '/apps/$appId/tokens'
   id:
     | '__root__'
     | '/'
@@ -147,6 +180,9 @@ export interface FileRouteTypes {
     | '/submissions/new'
     | '/approval-queue/'
     | '/submissions/'
+    | '/apps/$appId/access-log'
+    | '/apps/$appId/access-mode'
+    | '/apps/$appId/tokens'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -160,6 +196,9 @@ export interface RootRouteChildren {
   SubmissionsNewRoute: typeof SubmissionsNewRoute
   ApprovalQueueIndexRoute: typeof ApprovalQueueIndexRoute
   SubmissionsIndexRoute: typeof SubmissionsIndexRoute
+  AppsAppIdAccessLogRoute: typeof AppsAppIdAccessLogRoute
+  AppsAppIdAccessModeRoute: typeof AppsAppIdAccessModeRoute
+  AppsAppIdTokensRoute: typeof AppsAppIdTokensRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -234,6 +273,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCostRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/apps/$appId/tokens': {
+      id: '/apps/$appId/tokens'
+      path: '/apps/$appId/tokens'
+      fullPath: '/apps/$appId/tokens'
+      preLoaderRoute: typeof AppsAppIdTokensRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/apps/$appId/access-mode': {
+      id: '/apps/$appId/access-mode'
+      path: '/apps/$appId/access-mode'
+      fullPath: '/apps/$appId/access-mode'
+      preLoaderRoute: typeof AppsAppIdAccessModeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/apps/$appId/access-log': {
+      id: '/apps/$appId/access-log'
+      path: '/apps/$appId/access-log'
+      fullPath: '/apps/$appId/access-log'
+      preLoaderRoute: typeof AppsAppIdAccessLogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -248,6 +308,9 @@ const rootRouteChildren: RootRouteChildren = {
   SubmissionsNewRoute: SubmissionsNewRoute,
   ApprovalQueueIndexRoute: ApprovalQueueIndexRoute,
   SubmissionsIndexRoute: SubmissionsIndexRoute,
+  AppsAppIdAccessLogRoute: AppsAppIdAccessLogRoute,
+  AppsAppIdAccessModeRoute: AppsAppIdAccessModeRoute,
+  AppsAppIdTokensRoute: AppsAppIdTokensRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
