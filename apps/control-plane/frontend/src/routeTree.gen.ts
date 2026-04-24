@@ -11,10 +11,14 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SubmissionsIndexRouteImport } from './routes/submissions/index'
+import { Route as ApprovalQueueIndexRouteImport } from './routes/approval-queue/index'
 import { Route as SubmissionsNewRouteImport } from './routes/submissions/new'
 import { Route as SubmissionsSubmissionIdRouteImport } from './routes/submissions/$submissionId'
+import { Route as ApprovalQueueSubmissionIdRouteImport } from './routes/approval-queue/$submissionId'
 import { Route as AdminWebhookSubscriptionsRouteImport } from './routes/admin/webhook-subscriptions'
 import { Route as AdminProvisioningRouteImport } from './routes/admin/provisioning'
+import { Route as AdminOwnershipRouteImport } from './routes/admin/ownership'
+import { Route as AdminCostRouteImport } from './routes/admin/cost'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -24,6 +28,11 @@ const IndexRoute = IndexRouteImport.update({
 const SubmissionsIndexRoute = SubmissionsIndexRouteImport.update({
   id: '/submissions/',
   path: '/submissions/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApprovalQueueIndexRoute = ApprovalQueueIndexRouteImport.update({
+  id: '/approval-queue/',
+  path: '/approval-queue/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SubmissionsNewRoute = SubmissionsNewRouteImport.update({
@@ -36,6 +45,12 @@ const SubmissionsSubmissionIdRoute = SubmissionsSubmissionIdRouteImport.update({
   path: '/submissions/$submissionId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApprovalQueueSubmissionIdRoute =
+  ApprovalQueueSubmissionIdRouteImport.update({
+    id: '/approval-queue/$submissionId',
+    path: '/approval-queue/$submissionId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminWebhookSubscriptionsRoute =
   AdminWebhookSubscriptionsRouteImport.update({
     id: '/admin/webhook-subscriptions',
@@ -47,65 +62,103 @@ const AdminProvisioningRoute = AdminProvisioningRouteImport.update({
   path: '/admin/provisioning',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminOwnershipRoute = AdminOwnershipRouteImport.update({
+  id: '/admin/ownership',
+  path: '/admin/ownership',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminCostRoute = AdminCostRouteImport.update({
+  id: '/admin/cost',
+  path: '/admin/cost',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin/cost': typeof AdminCostRoute
+  '/admin/ownership': typeof AdminOwnershipRoute
   '/admin/provisioning': typeof AdminProvisioningRoute
   '/admin/webhook-subscriptions': typeof AdminWebhookSubscriptionsRoute
+  '/approval-queue/$submissionId': typeof ApprovalQueueSubmissionIdRoute
   '/submissions/$submissionId': typeof SubmissionsSubmissionIdRoute
   '/submissions/new': typeof SubmissionsNewRoute
+  '/approval-queue/': typeof ApprovalQueueIndexRoute
   '/submissions/': typeof SubmissionsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin/cost': typeof AdminCostRoute
+  '/admin/ownership': typeof AdminOwnershipRoute
   '/admin/provisioning': typeof AdminProvisioningRoute
   '/admin/webhook-subscriptions': typeof AdminWebhookSubscriptionsRoute
+  '/approval-queue/$submissionId': typeof ApprovalQueueSubmissionIdRoute
   '/submissions/$submissionId': typeof SubmissionsSubmissionIdRoute
   '/submissions/new': typeof SubmissionsNewRoute
+  '/approval-queue': typeof ApprovalQueueIndexRoute
   '/submissions': typeof SubmissionsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin/cost': typeof AdminCostRoute
+  '/admin/ownership': typeof AdminOwnershipRoute
   '/admin/provisioning': typeof AdminProvisioningRoute
   '/admin/webhook-subscriptions': typeof AdminWebhookSubscriptionsRoute
+  '/approval-queue/$submissionId': typeof ApprovalQueueSubmissionIdRoute
   '/submissions/$submissionId': typeof SubmissionsSubmissionIdRoute
   '/submissions/new': typeof SubmissionsNewRoute
+  '/approval-queue/': typeof ApprovalQueueIndexRoute
   '/submissions/': typeof SubmissionsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin/cost'
+    | '/admin/ownership'
     | '/admin/provisioning'
     | '/admin/webhook-subscriptions'
+    | '/approval-queue/$submissionId'
     | '/submissions/$submissionId'
     | '/submissions/new'
+    | '/approval-queue/'
     | '/submissions/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin/cost'
+    | '/admin/ownership'
     | '/admin/provisioning'
     | '/admin/webhook-subscriptions'
+    | '/approval-queue/$submissionId'
     | '/submissions/$submissionId'
     | '/submissions/new'
+    | '/approval-queue'
     | '/submissions'
   id:
     | '__root__'
     | '/'
+    | '/admin/cost'
+    | '/admin/ownership'
     | '/admin/provisioning'
     | '/admin/webhook-subscriptions'
+    | '/approval-queue/$submissionId'
     | '/submissions/$submissionId'
     | '/submissions/new'
+    | '/approval-queue/'
     | '/submissions/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminCostRoute: typeof AdminCostRoute
+  AdminOwnershipRoute: typeof AdminOwnershipRoute
   AdminProvisioningRoute: typeof AdminProvisioningRoute
   AdminWebhookSubscriptionsRoute: typeof AdminWebhookSubscriptionsRoute
+  ApprovalQueueSubmissionIdRoute: typeof ApprovalQueueSubmissionIdRoute
   SubmissionsSubmissionIdRoute: typeof SubmissionsSubmissionIdRoute
   SubmissionsNewRoute: typeof SubmissionsNewRoute
+  ApprovalQueueIndexRoute: typeof ApprovalQueueIndexRoute
   SubmissionsIndexRoute: typeof SubmissionsIndexRoute
 }
 
@@ -125,6 +178,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubmissionsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/approval-queue/': {
+      id: '/approval-queue/'
+      path: '/approval-queue'
+      fullPath: '/approval-queue/'
+      preLoaderRoute: typeof ApprovalQueueIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/submissions/new': {
       id: '/submissions/new'
       path: '/submissions/new'
@@ -137,6 +197,13 @@ declare module '@tanstack/react-router' {
       path: '/submissions/$submissionId'
       fullPath: '/submissions/$submissionId'
       preLoaderRoute: typeof SubmissionsSubmissionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/approval-queue/$submissionId': {
+      id: '/approval-queue/$submissionId'
+      path: '/approval-queue/$submissionId'
+      fullPath: '/approval-queue/$submissionId'
+      preLoaderRoute: typeof ApprovalQueueSubmissionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/webhook-subscriptions': {
@@ -153,15 +220,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminProvisioningRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/ownership': {
+      id: '/admin/ownership'
+      path: '/admin/ownership'
+      fullPath: '/admin/ownership'
+      preLoaderRoute: typeof AdminOwnershipRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/cost': {
+      id: '/admin/cost'
+      path: '/admin/cost'
+      fullPath: '/admin/cost'
+      preLoaderRoute: typeof AdminCostRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminCostRoute: AdminCostRoute,
+  AdminOwnershipRoute: AdminOwnershipRoute,
   AdminProvisioningRoute: AdminProvisioningRoute,
   AdminWebhookSubscriptionsRoute: AdminWebhookSubscriptionsRoute,
+  ApprovalQueueSubmissionIdRoute: ApprovalQueueSubmissionIdRoute,
   SubmissionsSubmissionIdRoute: SubmissionsSubmissionIdRoute,
   SubmissionsNewRoute: SubmissionsNewRoute,
+  ApprovalQueueIndexRoute: ApprovalQueueIndexRoute,
   SubmissionsIndexRoute: SubmissionsIndexRoute,
 }
 export const routeTree = rootRouteImport
