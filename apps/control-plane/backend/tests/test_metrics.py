@@ -1,4 +1,3 @@
-# pattern: Functional Core
 """Tests for OpenTelemetry metrics instrumentation.
 
 Verifies:

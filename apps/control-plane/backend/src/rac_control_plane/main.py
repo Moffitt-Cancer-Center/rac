@@ -28,9 +28,7 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
     # Startup
     configure_logging(settings)
 
-    # Configure metrics: skip gracefully if OTLP endpoint is unreachable or
-    # the default localhost value (meaning it was not explicitly configured).
-    if settings.otlp_endpoint != "http://localhost:4317":
+    if settings.metrics_enabled:
         try:
             configure_metrics(settings.otlp_endpoint)
         except Exception as exc:
@@ -39,7 +37,6 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
                 endpoint=settings.otlp_endpoint,
                 error=str(exc),
             )
-    # When endpoint == default, silently skip — tests and dev work fine with no-op provider.
 
     logger.info("RAC Control Plane starting", version="1.0.0", env=settings.env)
 

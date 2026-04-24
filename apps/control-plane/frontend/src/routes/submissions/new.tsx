@@ -1,19 +1,23 @@
+import { useRef } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { NewSubmissionForm } from '@/features/submissions/new-submission-form';
 import { createSubmission } from '@/lib/api';
 import type { SubmissionCreateRequest } from '@/features/submissions/schemas';
 
-export const Route = createFileRoute('/submissions/new' as any)({
+export const Route = createFileRoute('/submissions/new')({
   component: NewSubmissionPage,
 });
 
 function NewSubmissionPage() {
   const navigate = useNavigate();
+  // Generate one Idempotency-Key per user-intent (per form instance), so
+  // double-clicks and network retries hit the same key and the backend
+  // collapses them into one submission.
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
 
   const handleSubmit = async (data: SubmissionCreateRequest) => {
-    await createSubmission(data);
-    // Navigate to submissions list on success
-    await navigate({ to: '/submissions/' as any });
+    await createSubmission(data, { idempotencyKey: idempotencyKeyRef.current });
+    await navigate({ to: '/submissions' });
   };
 
   return (

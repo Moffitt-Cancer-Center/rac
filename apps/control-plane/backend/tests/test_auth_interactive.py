@@ -1,4 +1,3 @@
-# pattern: Functional Core
 """Tests for interactive OIDC authentication.
 
 Verifies AC2.3 (unauthenticated requests return 401) and AC2.6 (principal.oid is recorded).

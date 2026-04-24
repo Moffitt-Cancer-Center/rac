@@ -1,4 +1,3 @@
-# pattern: Functional Core
 """Tests for Idempotency-Key middleware.
 
 Verifies AC3.2: idempotent POST requests with same key return same response

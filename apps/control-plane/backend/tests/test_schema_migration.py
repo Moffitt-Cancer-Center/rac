@@ -1,4 +1,3 @@
-# pattern: Functional Core
 """Integration tests for Alembic schema migrations.
 
 Uses testcontainers to boot a real Postgres 16 with pg_uuidv7 extension,

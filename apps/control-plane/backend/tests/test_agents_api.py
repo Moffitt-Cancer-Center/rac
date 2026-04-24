@@ -1,4 +1,3 @@
-# pattern: Functional Core
 """Integration tests for Agent management API.
 
 Verifies:

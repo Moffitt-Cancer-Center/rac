@@ -1,4 +1,3 @@
-# pattern: Functional Core
 """Tests for client-credentials authentication.
 
 Verifies AC3.1 (agent auth works) and AC3.5 (disabled agents return 403).

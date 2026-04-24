@@ -46,6 +46,7 @@ class Settings(BaseSettings):
 
     # Observability
     otlp_endpoint: str = "http://localhost:4317"
+    metrics_enabled: bool = False
 
     model_config = {"env_prefix": "RAC_"}
 

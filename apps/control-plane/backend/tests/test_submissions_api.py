@@ -1,4 +1,3 @@
-# pattern: Functional Core
 """Integration tests for Submission CRUD API.
 
 Verifies:

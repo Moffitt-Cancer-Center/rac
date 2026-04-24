@@ -1,5 +1,5 @@
 # pattern: Functional Core
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -23,12 +23,20 @@ class NotFoundError(ApiError):
 
 @dataclass(frozen=True)
 class ValidationApiError(ApiError):
-    """422: Validation failed."""
+    """422: Validation failed. Optional per-field details for the frontend."""
 
-    def __init__(self, code: str, public_message: str) -> None:
+    details: list[dict[str, str]] = field(default_factory=list)
+
+    def __init__(
+        self,
+        code: str,
+        public_message: str,
+        details: list[dict[str, str]] | None = None,
+    ) -> None:
         object.__setattr__(self, "code", code)
         object.__setattr__(self, "http_status", 422)
         object.__setattr__(self, "public_message", public_message)
+        object.__setattr__(self, "details", list(details) if details else [])
 
 
 @dataclass(frozen=True)
@@ -61,14 +69,18 @@ class ConflictError(ApiError):
         object.__setattr__(self, "public_message", public_message)
 
 
-def render_error(exc: ApiError, correlation_id: str) -> dict[str, str]:
+def render_error(exc: ApiError, correlation_id: str) -> dict[str, object]:
     """Render API error to response dict with correlation ID.
 
-    Returns exactly {code, message, correlation_id} — no stack traces,
-    no internal details, no Postgres error text.
+    Returns {code, message, correlation_id} plus, when the exception is a
+    ValidationApiError with non-empty details, a `details: [...]` field.
+    Never includes stack traces, Postgres text, or internal URIs.
     """
-    return {
+    body: dict[str, object] = {
         "code": exc.code,
         "message": exc.public_message,
         "correlation_id": correlation_id,
     }
+    if isinstance(exc, ValidationApiError) and exc.details:
+        body["details"] = list(exc.details)
+    return body

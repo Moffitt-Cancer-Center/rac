@@ -53,8 +53,20 @@ async def list_submissions(
     Returns:
         Tuple of (submission_list, total_count)
     """
+    from rac_control_plane.settings import get_settings
+
+    settings = get_settings()
+    approver_roles = {settings.approver_role_research, settings.approver_role_it}
+    is_privileged = bool(approver_roles & principal.roles)
+
     stmt = select(Submission)
     count_stmt = select(func.count()).select_from(Submission)
+
+    if not is_privileged:
+        stmt = stmt.where(Submission.submitter_principal_id == principal.oid)
+        count_stmt = count_stmt.where(
+            Submission.submitter_principal_id == principal.oid
+        )
 
     if status_filter:
         stmt = stmt.where(Submission.status == status_filter)

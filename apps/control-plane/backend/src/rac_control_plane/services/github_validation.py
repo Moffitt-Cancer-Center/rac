@@ -52,15 +52,13 @@ async def validate_repo(
     if github_token:
         headers["Authorization"] = f"token {github_token}"
 
-    # Check if repository exists (HEAD request)
     api_url = f"https://api.github.com/repos/{owner}/{repo}"
 
     timeout = httpx.Timeout(5.0)
 
     async with httpx.AsyncClient(timeout=timeout) as client:
-        # Check repo existence
         try:
-            repo_response = await client.head(api_url, headers=headers)
+            repo_response = await client.get(api_url, headers=headers)
         except httpx.TimeoutException as e:
             raise ValidationApiError(
                 code="github_timeout",
@@ -76,6 +74,18 @@ async def validate_repo(
             raise ValidationApiError(
                 code="github_not_found",
                 public_message=f"Repository not found at {url} or reference '{ref}' does not exist",
+            )
+
+        if (
+            repo_response.status_code == 403
+            and repo_response.headers.get("X-RateLimit-Remaining") == "0"
+        ):
+            raise ValidationApiError(
+                code="github_rate_limited",
+                public_message=(
+                    "GitHub API rate limit exceeded. Set RAC_GITHUB_TOKEN to raise the cap, "
+                    "or retry after the limit window."
+                ),
             )
 
         if repo_response.status_code >= 400:

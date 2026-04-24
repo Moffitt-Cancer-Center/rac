@@ -1,4 +1,3 @@
-# pattern: Functional Core
 """Tests for slug derivation.
 
 Verifies AC2.1 (slug is derived correctly from paper title or repo name).

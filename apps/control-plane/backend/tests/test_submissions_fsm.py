@@ -1,4 +1,3 @@
-# pattern: Functional Core
 """Tests for submission FSM.
 
 Verifies legal and illegal state transitions, plus property-based tests
