@@ -330,7 +330,7 @@ class Agent(Base):
         nullable=False,
         unique=True,
     )
-    metadata: Mapped[Any] = mapped_column(JSONB, nullable=True)  # type: ignore[misc]
+    agent_metadata: Mapped[Any] = mapped_column("metadata", JSONB, nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

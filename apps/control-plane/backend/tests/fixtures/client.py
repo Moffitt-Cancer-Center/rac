@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from rac_control_plane.data.db import get_engine, get_session_maker
 from rac_control_plane.main import create_app
 from rac_control_plane.settings import get_settings
 
@@ -91,13 +92,19 @@ async def app(monkeypatch, migrated_db, mock_oidc):
     for key, value in test_env.items():
         monkeypatch.setenv(key, value)
 
-    # Clear cache again after setting env vars
+    # Clear all caches after setting env vars so app picks up new DB settings
     get_settings.cache_clear()
+    get_engine.cache_clear()
+    get_session_maker.cache_clear()
 
     # Create the app
     app_instance = create_app()
 
     yield app_instance
+
+    # Clean up engine/session caches so subsequent tests get fresh instances
+    get_engine.cache_clear()
+    get_session_maker.cache_clear()
 
 
 @pytest.fixture

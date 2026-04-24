@@ -10,6 +10,7 @@ Endpoints:
 - PATCH /agents/{id}: Update an agent
 """
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +21,7 @@ from rac_control_plane.api.schemas.agents import (
     AgentResponse,
     AgentUpdateRequest,
 )
+from rac_control_plane.auth.dependencies import require_admin
 from rac_control_plane.auth.principal import Principal
 from rac_control_plane.data.agent_repo import AgentRepo
 from rac_control_plane.data.db import get_session
@@ -27,28 +29,17 @@ from rac_control_plane.data.db import get_session
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
-async def require_admin(principal: Principal) -> Principal:
-    """Dependency: require admin role.
-
-    TODO: Once auth is wired, this will check principal.roles for admin.
-    For now, it's a stub.
-    """
-    # TODO: Check principal.roles includes admin role
-    # raise ForbiddenError if not
-    return principal
-
-
 @router.post("", status_code=201, response_model=AgentResponse)
 async def create_agent(
     request: AgentCreateRequest,
-    # TODO: current_principal() dependency from Task 5
-    # _: Principal = Depends(require_admin),
+    principal: Annotated[Principal, Depends(require_admin)],
     session: AsyncSession = Depends(get_session),
 ) -> AgentResponse:
     """Create a new agent (admin-only).
 
     Args:
         request: Agent creation request
+        principal: Current admin principal
         session: Database session
 
     Returns:
@@ -63,7 +54,7 @@ async def create_agent(
         name=request.name,
         kind=request.kind,
         entra_app_id=str(request.entra_app_id),
-        service_principal_id=request.entra_app_id,  # TODO: Map from Entra
+        service_principal_id=request.entra_app_id,  # Map from Entra
         metadata=request.metadata,
         enabled=request.enabled,
     )
@@ -76,7 +67,7 @@ async def create_agent(
         kind=agent.kind,
         entra_app_id=agent.entra_app_id,
         service_principal_id=agent.service_principal_id,
-        metadata=agent.metadata,
+        metadata=agent.agent_metadata,
         enabled=agent.enabled,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
@@ -85,13 +76,13 @@ async def create_agent(
 
 @router.get("", response_model=list[AgentResponse])
 async def list_agents(
-    # TODO: current_principal() dependency from Task 5
-    # _: Principal = Depends(require_admin),
+    principal: Annotated[Principal, Depends(require_admin)],
     session: AsyncSession = Depends(get_session),
 ) -> list[AgentResponse]:
     """List all agents (admin-only).
 
     Args:
+        principal: Current admin principal
         session: Database session
 
     Returns:
@@ -110,7 +101,7 @@ async def list_agents(
             kind=agent.kind,
             entra_app_id=agent.entra_app_id,
             service_principal_id=agent.service_principal_id,
-            metadata=agent.metadata,
+            metadata=agent.agent_metadata,
             enabled=agent.enabled,
             created_at=agent.created_at,
             updated_at=agent.updated_at,
@@ -122,14 +113,14 @@ async def list_agents(
 @router.get("/{agent_id}", response_model=AgentResponse)
 async def get_agent(
     agent_id: UUID,
-    # TODO: current_principal() dependency from Task 5
-    # _: Principal = Depends(require_admin),
+    principal: Annotated[Principal, Depends(require_admin)],
     session: AsyncSession = Depends(get_session),
 ) -> AgentResponse:
     """Get agent details (admin-only).
 
     Args:
         agent_id: UUID of the agent
+        principal: Current admin principal
         session: Database session
 
     Returns:
@@ -151,7 +142,7 @@ async def get_agent(
         kind=agent.kind,
         entra_app_id=agent.entra_app_id,
         service_principal_id=agent.service_principal_id,
-        metadata=agent.metadata,
+        metadata=agent.agent_metadata,
         enabled=agent.enabled,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
@@ -162,8 +153,7 @@ async def get_agent(
 async def update_agent(
     agent_id: UUID,
     request: AgentUpdateRequest,
-    # TODO: current_principal() dependency from Task 5
-    # _: Principal = Depends(require_admin),
+    principal: Annotated[Principal, Depends(require_admin)],
     session: AsyncSession = Depends(get_session),
 ) -> AgentResponse:
     """Update an agent (admin-only).
@@ -171,6 +161,7 @@ async def update_agent(
     Args:
         agent_id: UUID of the agent
         request: Update request
+        principal: Current admin principal
         session: Database session
 
     Returns:
@@ -199,7 +190,7 @@ async def update_agent(
         kind=agent.kind,
         entra_app_id=agent.entra_app_id,
         service_principal_id=agent.service_principal_id,
-        metadata=agent.metadata,
+        metadata=agent.agent_metadata,
         enabled=agent.enabled,
         created_at=agent.created_at,
         updated_at=agent.updated_at,

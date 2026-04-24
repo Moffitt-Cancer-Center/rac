@@ -61,7 +61,7 @@ class AgentRepo:
         kind: str,
         entra_app_id: str,
         service_principal_id: UUID,
-        metadata: dict | None = None,
+        metadata: dict[str, object] | None = None,
         enabled: bool = True,
     ) -> Agent:
         """Create a new agent.
@@ -82,7 +82,7 @@ class AgentRepo:
             kind=kind,
             entra_app_id=entra_app_id,
             service_principal_id=service_principal_id,
-            metadata=metadata,
+            agent_metadata=metadata,
             enabled=enabled,
         )
         self.session.add(agent)
@@ -94,7 +94,7 @@ class AgentRepo:
         agent_id: UUID,
         name: str | None = None,
         enabled: bool | None = None,
-        metadata: dict | None = None,
+        metadata: dict[str, object] | None = None,
     ) -> Agent | None:
         """Update an agent's properties.
 
@@ -116,7 +116,7 @@ class AgentRepo:
         if enabled is not None:
             agent.enabled = enabled
         if metadata is not None:
-            agent.metadata = metadata
+            agent.agent_metadata = metadata
 
         await self.session.flush()
         return agent

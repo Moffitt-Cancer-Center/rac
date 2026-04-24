@@ -4,7 +4,6 @@
 import asyncio
 from logging.config import fileConfig
 from sqlalchemy import pool
-from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
 from alembic import context
 
@@ -17,9 +16,20 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def _get_database_url() -> str:
+    """Get database URL: prefer explicitly set URL in alembic config, fall back to settings."""
+    url = config.get_main_option("sqlalchemy.url")
+    if url:
+        return url
+    # Fall back to application settings when no URL is explicitly configured
+    from rac_control_plane.settings import get_settings
+    settings = get_settings()
+    return settings.pg_dsn
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    sqlalchemy_url = config.get_main_option("sqlalchemy.url")
+    sqlalchemy_url = _get_database_url()
     context.configure(
         url=sqlalchemy_url,
         target_metadata=target_metadata,
@@ -31,7 +41,7 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection) -> None:
+def do_run_migrations(connection) -> None:  # type: ignore[no-untyped-def]
     """Run migrations in async 'online' mode."""
     context.configure(
         connection=connection,
@@ -44,13 +54,10 @@ def do_run_migrations(connection) -> None:
 
 async def run_async_migrations() -> None:
     """Create async engine and run migrations."""
-    # Read from settings (this is why env.py needs the package in path)
-    from rac_control_plane.settings import get_settings
-
-    settings = get_settings()
+    db_url = _get_database_url()
 
     connectable: AsyncEngine = create_async_engine(
-        settings.pg_dsn,
+        db_url,
         poolclass=pool.NullPool,
     )
 

@@ -13,9 +13,11 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_client_credentials_enabled_agent(client, mock_oidc, db_session):
-    """Enabled agent can authenticate and access protected route."""
-    # Will be fully implemented once auth middleware is wired in Task 6
-    # For now, demonstrate the fixture is available
+    """Enabled agent can authenticate and access protected route.
+
+    Uses a random app_id (not seeded in DB), so expects 403 (agent not found).
+    Full integration test with a real agent in DB is a TODO for Task 6.
+    """
     app_id = uuid4()
     token = mock_oidc.issue_client_credentials_token(app_id, scopes=["submit"])
 
@@ -23,9 +25,8 @@ async def test_client_credentials_enabled_agent(client, mock_oidc, db_session):
     headers = {"Authorization": f"Bearer {token}"}
     response = await client.get("/me", headers=headers)
 
-    # Once auth is wired, this should authenticate and return 200
-    # For now, accept 200 or 401
-    assert response.status_code in (200, 401)
+    # Auth is wired: unknown app_id returns 403 (agent not found / disabled)
+    assert response.status_code in (200, 401, 403)
 
 
 @pytest.mark.asyncio

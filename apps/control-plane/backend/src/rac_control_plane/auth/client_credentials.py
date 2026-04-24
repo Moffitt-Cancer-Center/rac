@@ -4,6 +4,10 @@
 Uses fastapi-azure-auth to validate bearer tokens from Entra,
 looks up the agent in the database, and returns a Principal
 with kind='agent' and the agent's database ID.
+
+Note: This module is superseded by auth/dependencies.py which provides
+the combined current_principal() dependency used by route handlers.
+It is kept for backward compatibility and documentation purposes.
 """
 
 from typing import Annotated
@@ -17,7 +21,7 @@ from rac_control_plane.errors import ForbiddenError
 
 
 async def current_principal_client_credentials(
-    auth_claims: Annotated[dict, Depends(_get_azure_auth())],
+    auth_claims: Annotated[dict[str, object], Depends(_get_azure_auth())],
     agent_repo: Annotated[AgentRepo, Depends()],
 ) -> Principal:
     """FastAPI dependency: extract Principal from client-credentials token.
@@ -36,7 +40,7 @@ async def current_principal_client_credentials(
         )
 
     # Look up agent by entra_app_id
-    agent = await agent_repo.get_by_entra_app_id(app_id)
+    agent = await agent_repo.get_by_entra_app_id(str(app_id))
     if not agent or not agent.enabled:
         raise ForbiddenError(
             public_message="Agent not found or disabled.",

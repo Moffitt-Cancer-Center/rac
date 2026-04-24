@@ -7,6 +7,9 @@ Endpoints:
 - GET /submissions: List submissions with pagination
 """
 
+from typing import Annotated
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +18,7 @@ from rac_control_plane.api.schemas.submissions import (
     SubmissionListResponse,
     SubmissionResponse,
 )
+from rac_control_plane.auth.dependencies import current_principal
 from rac_control_plane.auth.principal import Principal
 from rac_control_plane.data.db import get_session
 from rac_control_plane.data.models import SubmissionStatus
@@ -23,8 +27,10 @@ from rac_control_plane.data.submission_repo import (
     get_existing_slugs,
     list_submissions,
 )
+from rac_control_plane.errors import ForbiddenError
 from rac_control_plane.metrics import submission_counter
 from rac_control_plane.services.submissions.create import create_submission
+from rac_control_plane.settings import get_settings
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
 
@@ -32,7 +38,7 @@ router = APIRouter(prefix="/submissions", tags=["submissions"])
 @router.post("", status_code=201, response_model=SubmissionResponse)
 async def post_submission(
     request: SubmissionCreateRequest,
-    # TODO: current_principal() dependency from Task 5
+    principal: Annotated[Principal, Depends(current_principal)],
     session: AsyncSession = Depends(get_session),
 ) -> SubmissionResponse:
     """Create a new submission.
@@ -50,6 +56,7 @@ async def post_submission(
 
     Args:
         request: Submission creation request
+        principal: Current authenticated principal
         session: Database session
 
     Returns:
@@ -60,16 +67,6 @@ async def post_submission(
         403: Agent is disabled
         422: GitHub validation failed
     """
-    # TODO: current_principal dependency needed
-    # For now, this is a stub that requires auth middleware wiring
-    principal = Principal(
-        oid=__import__("uuid").uuid4(),
-        kind="user",
-        display_name="Test User",
-        agent_id=None,
-        roles=frozenset(["researcher"]),
-    )
-
     # Get existing slugs to avoid collisions
     existing_slugs = await get_existing_slugs(session)
 
@@ -106,7 +103,7 @@ async def post_submission(
 @router.get("/{submission_id}", response_model=SubmissionResponse)
 async def get_submission(
     submission_id: str,
-    # TODO: current_principal() dependency from Task 5
+    principal: Annotated[Principal, Depends(current_principal)],
     session: AsyncSession = Depends(get_session),
 ) -> SubmissionResponse:
     """Retrieve a single submission by ID.
@@ -117,6 +114,7 @@ async def get_submission(
 
     Args:
         submission_id: UUID of the submission
+        principal: Current authenticated principal
         session: Database session
 
     Returns:
@@ -128,7 +126,6 @@ async def get_submission(
     """
     # Parse UUID
     try:
-        from uuid import UUID
         submission_uuid = UUID(submission_id)
     except ValueError as e:
         raise HTTPException(
@@ -140,7 +137,15 @@ async def get_submission(
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
 
-    # TODO: Authorization checks (submitter, approver, admin)
+    # Authorization checks: submitter, approver, or admin
+    settings = get_settings()
+    is_submitter = submission.submitter_principal_id == principal.oid
+    is_approver = (
+        settings.approver_role_research in principal.roles
+        or settings.approver_role_it in principal.roles
+    )
+    if not is_submitter and not is_approver:
+        raise ForbiddenError(public_message="Not authorized to view this submission.")
 
     return SubmissionResponse(
         id=submission.id,
@@ -161,22 +166,23 @@ async def get_submission(
 
 @router.get("", response_model=SubmissionListResponse)
 async def list_all_submissions(
+    principal: Annotated[Principal, Depends(current_principal)],
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status: SubmissionStatus | None = None,
-    # TODO: current_principal() dependency from Task 5
     session: AsyncSession = Depends(get_session),
 ) -> SubmissionListResponse:
     """List submissions with pagination and filtering.
+
+    Returns all submissions (authorization filter is a TODO for v1 per M2 note).
 
     Query parameters:
     - page: Page number (1-indexed)
     - page_size: Items per page (1-100)
     - status: Filter by submission status
 
-    Returns submissions where principal is authorized (submitter, approver, admin).
-
     Args:
+        principal: Current authenticated principal
         page: Page number
         page_size: Items per page
         status: Optional status filter
@@ -185,15 +191,6 @@ async def list_all_submissions(
     Returns:
         Paginated list of submissions
     """
-    # TODO: current_principal dependency needed
-    principal = Principal(
-        oid=__import__("uuid").uuid4(),
-        kind="user",
-        display_name="Test User",
-        agent_id=None,
-        roles=frozenset(["researcher"]),
-    )
-
     # Fetch submissions
     submissions, total = await list_submissions(
         session,

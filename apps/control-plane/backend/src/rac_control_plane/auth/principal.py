@@ -31,7 +31,7 @@ class Principal:
     roles: frozenset[str] = frozenset()
 
 
-def principal_from_claims(claims: dict) -> Principal:
+def principal_from_claims(claims: dict[str, object]) -> Principal:
     """Pure mapping from OIDC/Azure claims to Principal.
 
     Arguments:
@@ -44,7 +44,7 @@ def principal_from_claims(claims: dict) -> Principal:
         AuthError: If required claims are missing or malformed.
     """
     # Extract OID (object ID for users, will be service principal ID for agents)
-    oid_str = claims.get("oid")
+    oid_str = str(claims["oid"]) if "oid" in claims else None
     if not oid_str:
         raise AuthError(
             public_message="Invalid token: missing object ID (oid) claim.",
@@ -58,13 +58,18 @@ def principal_from_claims(claims: dict) -> Principal:
         ) from e
 
     # Display name (optional)
-    display_name = claims.get("name") or claims.get("preferred_username")
+    name_val = claims.get("name") or claims.get("preferred_username")
+    display_name = str(name_val) if name_val is not None else None
 
     # Roles from token (typically in 'roles' claim for Entra)
-    roles_claim = claims.get("roles", [])
-    if isinstance(roles_claim, str):
-        roles_claim = [roles_claim]
-    roles = frozenset(roles_claim)
+    raw_roles = claims.get("roles", [])
+    if isinstance(raw_roles, str):
+        roles_list: list[str] = [raw_roles]
+    elif isinstance(raw_roles, list):
+        roles_list = [str(r) for r in raw_roles]
+    else:
+        roles_list = []
+    roles = frozenset(roles_list)
 
     # For now, assume user (no agent_id). Agents are handled separately.
     return Principal(

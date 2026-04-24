@@ -19,6 +19,12 @@ from alembic import op
 import sqlalchemy as sa
 from uuid import UUID
 
+# Alembic revision identifiers
+revision: str = "0002"
+down_revision: str | None = "0001"
+branch_labels: str | None = None
+depends_on: str | None = None
+
 # Well-known UUID for the web-ui agent (this phase)
 WEB_UI_AGENT_ID = UUID("00000000-0000-0000-0000-000000000001")
 WEB_UI_ENTRA_APP_ID = "00000000-0000-0000-0000-000000000001"

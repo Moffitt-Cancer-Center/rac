@@ -7,231 +7,227 @@ and stores request/response pairs keyed on (key, principal_id).
 Same key + same body = replay cached response + X-Idempotent-Replay: true
 Same key + different body = 422 Unprocessable Entity
 No key = request proceeds normally (caller opted out)
+No principal = return 401 (defer to auth layer)
+
+Design: BaseHTTPMiddleware approach, reads body once, replays to downstream.
 """
 
+from collections.abc import Awaitable, Callable
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
 
 from rac_control_plane.data.models import IdempotencyKey
-from rac_control_plane.errors import ValidationApiError
 from rac_control_plane.services.idempotency import hash_request, validate_key
 
 
-class IdempotencyMiddleware:
-    """ASGI middleware for Idempotency-Key handling."""
+class IdempotencyMiddleware(BaseHTTPMiddleware):
+    """ASGI middleware for Idempotency-Key handling.
 
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
+    Takes an async_sessionmaker so it can open its own DB session
+    independently of the per-request dependency injection.
+    """
 
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """Process the request."""
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
+    def __init__(self, app: object, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        super().__init__(app)  # type: ignore[arg-type]
+        self._session_factory = session_factory
 
-        # Extract method and headers
-        method = scope["method"]
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Process the request, applying idempotency semantics."""
+        method = request.method
         is_mutating = method in ("POST", "PUT", "DELETE", "PATCH")
 
         if not is_mutating:
-            # Pass through for non-mutating requests
-            await self.app(scope, receive, send)
-            return
+            return await call_next(request)
 
-        # Get Idempotency-Key header
-        headers = dict(scope.get("headers", []))
-        idempotency_key = None
-
-        for key, value in headers.items():
-            if key.lower() == b"idempotency-key":
-                idempotency_key = value.decode()
-                break
-
+        idempotency_key = request.headers.get("idempotency-key")
         if not idempotency_key:
-            # No key provided, proceed normally
-            await self.app(scope, receive, send)
-            return
+            # No key — caller opted out, proceed normally
+            return await call_next(request)
 
-        # Validate the key
+        # Validate key format
         if not validate_key(idempotency_key):
-            raise ValidationApiError(
-                code="invalid_idempotency_key",
-                public_message="Idempotency-Key must be a UUID or alphanumeric string ≤ 256 chars",
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "code": "invalid_idempotency_key",
+                    "message": "Idempotency-Key must be a UUID or alphanumeric string ≤ 256 chars",
+                    "correlation_id": "",
+                },
             )
 
-        # Get principal_id from request state (set by auth middleware)
-        principal_id = getattr(scope.get("state", {}), "principal_id", None)
-        if not principal_id:
-            # Auth middleware not yet wired or no principal - proceed without idempotency
-            await self.app(scope, receive, send)
-            return
+        # Get principal_id from request state. Auth middleware (CorrelationIdMiddleware
+        # runs before this, but current_principal is a Depends so it runs per-route.
+        # We read the raw body and hash it; then defer principal resolution to the route.
+        # If no principal (no auth header), return 401.
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return JSONResponse(
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+                content={
+                    "code": "unauthorized",
+                    "message": "Authentication required for idempotent requests.",
+                    "correlation_id": "",
+                },
+            )
 
-        # Read request body for hashing
-        body_parts: list[bytes] = []
+        # Extract principal_id from state (set after auth runs).
+        # Since auth is a Depends and hasn't run yet at middleware time, we use
+        # a heuristic: decode the token lightly to get the oid/appid for keying.
+        # Full validation happens at the route level. If decode fails, pass through.
+        import jwt as pyjwt
 
-        async def receive_wrapper() -> Message:
-            """Wrapper to capture body chunks."""
-            message = await receive()
-            if message["type"] == "http.request":
-                body_parts.append(message.get("body", b""))
-            return message
-
-        # Collect the full body
-        full_body = b""
-
-        # Get the session from scope (will be set by dependency injection)
-        session: AsyncSession | None = scope.get("state", {}).session
-        if not session:
-            # No session available, proceed without idempotency
-            await self.app(scope, receive, send)
-            return
-
-        # First, we need to read the full body
-        # We'll use a wrapped receive to capture it
-        async def wrapped_receive() -> Message:
-            nonlocal full_body
-            message = await receive()
-            if message["type"] == "http.request":
-                chunk = message.get("body", b"")
-                full_body += chunk
-            return message
-
-        # Compute request hash
-        path = scope.get("path", "/")
-        request_hash = hash_request(method, path, full_body)
-
-        # Try to insert idempotency record (new request)
+        raw_token = auth_header[len("Bearer "):]
         try:
+            raw_claims: dict[str, object] = pyjwt.decode(
+                raw_token,
+                options={"verify_signature": False},
+                algorithms=["HS256", "RS256"],
+            )
+        except pyjwt.PyJWTError:
+            # Malformed token — let the auth layer reject it
+            return await call_next(request)
+
+        oid = raw_claims.get("oid") or raw_claims.get("appid")
+        if not oid:
+            # Token has no identity claim — let auth handle it
+            return await call_next(request)
+
+        try:
+            principal_uuid = UUID(str(oid))
+        except (ValueError, AttributeError):
+            return await call_next(request)
+
+        # Read body once
+        body = await request.body()
+        request_hash = hash_request(method, str(request.url.path), body)
+
+        async with self._session_factory() as session:
+            # Try to insert the idempotency record
             new_record = IdempotencyKey(
                 key=idempotency_key,
-                principal_id=UUID(principal_id) if isinstance(principal_id, str) else principal_id,
+                principal_id=principal_uuid,
                 request_hash=request_hash,
-                response_status=0,  # Placeholder, will be updated
-                response_body="",  # Placeholder, will be updated
-                response_headers={},  # Placeholder, will be updated
+                response_status=0,
+                response_body="",
+                response_headers={},
             )
-            session.add(new_record)
-            await session.flush()
+            try:
+                session.add(new_record)
+                await session.flush()
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                # Key already exists — check if hash matches
+                stmt = select(IdempotencyKey).where(
+                    (IdempotencyKey.key == idempotency_key)
+                    & (IdempotencyKey.principal_id == principal_uuid)
+                )
+                existing = await session.scalar(stmt)
 
-            # This is a new request, proceed downstream
-            response_started = False
-            status_code = 200
-            response_body_parts: list[bytes] = []
-            response_headers: dict = {}
+                if existing is None:
+                    return JSONResponse(
+                        status_code=500,
+                        content={
+                            "code": "idempotency_error",
+                            "message": "Idempotency-Key handling failed",
+                            "correlation_id": "",
+                        },
+                    )
 
-            async def send_wrapper(message: Message) -> None:
-                nonlocal response_started, status_code, response_headers
+                if existing.request_hash != request_hash:
+                    return JSONResponse(
+                        status_code=422,
+                        content={
+                            "code": "idempotency_key_reused",
+                            "message": (
+                                f"Idempotency-Key '{idempotency_key}' "
+                                "reused with different request body"
+                            ),
+                            "correlation_id": "",
+                        },
+                    )
 
-                if message["type"] == "http.response.start":
-                    response_started = True
-                    status_code = message["status"]
-                    # Capture headers
-                    for raw_header_name, raw_header_value in message.get("headers", []):
-                        header_name = raw_header_name.decode()
-                        header_value = raw_header_value.decode()
-                        response_headers[header_name] = header_value
+                # Same key + same body → replay cached response
+                if existing.response_status == 0:
+                    # Race: another request is still in-flight — proceed
+                    pass
+                else:
+                    resp_headers: dict[str, str] = dict(existing.response_headers or {})
+                    resp_headers["x-idempotent-replay"] = "true"
+                    response_body_bytes = existing.response_body.encode("utf-8")
 
-                elif message["type"] == "http.response.body":
-                    body = message.get("body", b"")
-                    response_body_parts.append(body)
+                    return Response(
+                        content=response_body_bytes,
+                        status_code=existing.response_status,
+                        headers=resp_headers,
+                        media_type=resp_headers.get("content-type", "application/json"),
+                    )
 
-                await send(message)
+            # New record inserted — call downstream and capture the response
+            # We need to replay the body to the downstream handler
+            async def receive_with_body() -> dict[str, object]:
+                return {
+                    "type": "http.request",
+                    "body": body,
+                    "more_body": False,
+                }
 
-            # Call downstream handler with wrapped receive/send
-            # This is tricky because we've already read the body
-            # We need to create a new scope/receive that replays the body
+            # Swap receive with body replay so downstream handler sees the body
+            from starlette.types import Message
 
-            # Create a custom receive that replays the captured body
-            body_sent = False
+            original_receive = request.receive
+
+            body_consumed = False
 
             async def replay_receive() -> Message:
-                nonlocal body_sent
-                if not body_sent:
-                    body_sent = True
+                nonlocal body_consumed
+                if not body_consumed:
+                    body_consumed = True
                     return {
                         "type": "http.request",
-                        "body": full_body,
+                        "body": body,
                         "more_body": False,
                     }
-                return await wrapped_receive()
+                return await original_receive()
 
-            await self.app(scope, replay_receive, send_wrapper)
+            # Override receive on the request scope via scope dict (type-safe)
+            request.scope["_receive_override"] = replay_receive
+            # Patch the private attribute which Starlette reads
+            object.__setattr__(request, "_receive", replay_receive)
 
-            # Update the idempotency record with the response
-            response_body = b"".join(response_body_parts)
-            new_record.response_status = status_code
-            new_record.response_body = response_body.decode("utf-8", errors="replace")
-            new_record.response_headers = response_headers
-            await session.flush()
-            await session.commit()
+            response = await call_next(request)
 
-        except IntegrityError:
-            # Key already exists - check if hash matches
-            await session.rollback()
+            # Capture response body
+            resp_body = b""
+            async for chunk in response.body_iterator:  # type: ignore[attr-defined]
+                resp_body += chunk if isinstance(chunk, bytes) else chunk.encode()
 
-            principal_uuid = (
-                UUID(principal_id)
-                if isinstance(principal_id, str)
-                else principal_id
-            )
-            stmt = select(IdempotencyKey).where(
-                (IdempotencyKey.key == idempotency_key)
-                & (IdempotencyKey.principal_id == principal_uuid)
-            )
-            existing = await session.scalar(stmt)
-
-            if existing is None:
-                # Shouldn't happen, but handle gracefully
-                raise ValidationApiError(
-                    code="idempotency_key_error",
-                    public_message="Idempotency-Key handling failed",
-                ) from None
-
-            if existing.request_hash != request_hash:
-                # Same key, different request body
-                msg = (
-                    f"Idempotency-Key '{idempotency_key}' "
-                    "reused with different request body"
+            # Store response in DB
+            resp_headers_dict: dict[str, str] = dict(response.headers)
+            async with self._session_factory() as update_session:
+                stmt2 = select(IdempotencyKey).where(
+                    (IdempotencyKey.key == idempotency_key)
+                    & (IdempotencyKey.principal_id == principal_uuid)
                 )
-                raise ValidationApiError(
-                    code="idempotency_key_reused",
-                    public_message=msg,
-                ) from None
+                record = await update_session.scalar(stmt2)
+                if record is not None:
+                    record.response_status = response.status_code
+                    record.response_body = resp_body.decode("utf-8", errors="replace")
+                    record.response_headers = resp_headers_dict
+                    await update_session.commit()
 
-            # Same key, same body - return cached response
-            response_status = existing.response_status
-            response_body = existing.response_body.encode()
-            response_headers_dict = existing.response_headers or {}
-
-            # Add the replay header
-            response_headers_dict["X-Idempotent-Replay"] = "true"
-
-            # Send cached response
-            headers_list = [
-                (
-                    k.lower().encode() if isinstance(k, str) else k,
-                    v.encode() if isinstance(v, str) else v,
-                )
-                for k, v in response_headers_dict.items()
-            ]
-
-            await send({
-                "type": "http.response.start",
-                "status": response_status,
-                "headers": headers_list,
-            })
-
-            if response_body:
-                await send({
-                    "type": "http.response.body",
-                    "body": response_body,
-                })
-
-            await send({
-                "type": "http.response.body",
-                "body": b"",
-            })
+            return Response(
+                content=resp_body,
+                status_code=response.status_code,
+                headers=resp_headers_dict,
+                media_type=str(response.media_type) if response.media_type else None,
+            )

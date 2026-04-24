@@ -41,9 +41,10 @@ def test_health_check_returns_200() -> None:
     """GET /health returns 200 with expected structure."""
     _setup_env()
     try:
+        from rac_control_plane.main import create_app
         get_settings.cache_clear()
 
-        client = TestClient(app)
+        client = TestClient(create_app())
         response = client.get("/health")
 
         assert response.status_code == 200
@@ -59,9 +60,10 @@ def test_correlation_id_echoed_in_header() -> None:
     """X-Request-Id is echoed back in response headers."""
     _setup_env()
     try:
+        from rac_control_plane.main import create_app
         get_settings.cache_clear()
 
-        client = TestClient(app)
+        client = TestClient(create_app())
         test_id = "test-correlation-id-12345"
         response = client.get(
             "/health",
@@ -78,9 +80,10 @@ def test_correlation_id_generated_if_missing() -> None:
     """Correlation ID is generated if not provided."""
     _setup_env()
     try:
+        from rac_control_plane.main import create_app
         get_settings.cache_clear()
 
-        client = TestClient(app)
+        client = TestClient(create_app())
         response = client.get("/health")
 
         # Should have x-request-id header even without input

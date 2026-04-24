@@ -24,7 +24,8 @@ async def get_by_id(session: AsyncSession, submission_id: UUID) -> Submission | 
         Submission ORM object or None if not found
     """
     stmt = select(Submission).where(Submission.id == submission_id)
-    return await session.scalar(stmt)
+    result = await session.scalar(stmt)
+    return result
 
 
 async def list_submissions(

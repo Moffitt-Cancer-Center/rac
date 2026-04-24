@@ -31,7 +31,7 @@ def configure_logging(settings: Settings) -> None:
 
     # Configure structlog
     structlog.configure(
-        processors=shared_processors + context_processors + formatting_processors,  # type: ignore
+        processors=shared_processors + context_processors + formatting_processors,
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
         cache_logger_on_first_use=True,

@@ -18,13 +18,43 @@ Created by: Tier 1 bootstrap (docs/runbooks/bootstrap.md)
 from alembic import op
 import sqlalchemy as sa
 
+# Alembic revision identifiers
+revision: str = "0001"
+down_revision: str | None = None
+branch_labels: str | None = None
+depends_on: str | None = None
+
 
 def upgrade() -> None:
     # Create extension if not exists
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_uuidv7;")
 
-    # Create submission_status enum
-    submission_status_enum = sa.Enum(
+    # Create uuidv7() alias for uuid_generate_v7()
+    # ghcr.io/fboulnois/pg_uuidv7 exposes uuid_generate_v7(), not uuidv7().
+    # Add a uuidv7() wrapper so table DDL and application code can use the shorter name.
+    op.execute("""
+        CREATE OR REPLACE FUNCTION uuidv7()
+        RETURNS uuid
+        LANGUAGE sql
+        VOLATILE STRICT PARALLEL SAFE
+        AS $$ SELECT uuid_generate_v7() $$;
+    """)
+
+    # Create submission_status enum via raw DDL — avoids SQLAlchemy's double-create
+    # bug where sa.Enum._on_table_create fires even with create_type=False
+    # because the generic sa.Enum converts to a dialect-specific ENUM that resets create_type.
+    op.execute(
+        "CREATE TYPE submission_status AS ENUM ("
+        "'awaiting_scan', 'pipeline_error', 'scan_rejected', 'needs_user_action', "
+        "'needs_assistance', 'awaiting_research_review', 'research_rejected', "
+        "'awaiting_it_review', 'it_rejected', 'approved', 'deployed'"
+        ");"
+    )
+
+    # Use postgresql.ENUM (native, not generic sa.Enum) with create_type=False
+    # so the column references the already-created type without re-creating it.
+    from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
+    submission_status_col_type = PG_ENUM(
         'awaiting_scan',
         'pipeline_error',
         'scan_rejected',
@@ -36,16 +66,15 @@ def upgrade() -> None:
         'it_rejected',
         'approved',
         'deployed',
-        name='submission_status'
+        name='submission_status',
+        create_type=False,
     )
-    submission_status_enum.create(op.get_bind())
 
-    # Create submission table
     op.create_table(
         'submission',
         sa.Column('id', sa.UUID(as_uuid=True), server_default=sa.text("uuidv7()"), nullable=False),
         sa.Column('slug', sa.String(40), nullable=False),
-        sa.Column('status', submission_status_enum, nullable=False, server_default='awaiting_scan'),
+        sa.Column('status', submission_status_col_type, nullable=False, server_default='awaiting_scan'),
         sa.Column('submitter_principal_id', sa.UUID(as_uuid=True), nullable=False),
         sa.Column('agent_id', sa.UUID(as_uuid=True), nullable=True),
         sa.Column('app_id', sa.UUID(as_uuid=True), nullable=True),

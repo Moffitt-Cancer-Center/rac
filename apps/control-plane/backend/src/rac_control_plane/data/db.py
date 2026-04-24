@@ -2,8 +2,10 @@
 """Database engine and session management."""
 
 import functools
+from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
@@ -13,7 +15,7 @@ from rac_control_plane.settings import get_settings
 
 
 @functools.lru_cache
-def get_engine():
+def get_engine() -> AsyncEngine:
     """Create and cache the async SQLAlchemy engine."""
     settings = get_settings()
     return create_async_engine(
@@ -25,7 +27,7 @@ def get_engine():
 
 
 @functools.lru_cache
-def get_session_maker():
+def get_session_maker() -> async_sessionmaker[AsyncSession]:
     """Create and cache the async sessionmaker."""
     engine = get_engine()
     return async_sessionmaker(
@@ -35,7 +37,7 @@ def get_session_maker():
     )
 
 
-async def get_session():
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency: yields an AsyncSession for the request."""
     factory = get_session_maker()
     async with factory() as session:
