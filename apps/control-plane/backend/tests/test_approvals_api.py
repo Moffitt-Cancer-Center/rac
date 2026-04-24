@@ -272,12 +272,12 @@ async def test_it_approve_enqueues_provisioning(client, db_setup, mock_oidc) -> 
 
     provisioning_calls: list[UUID] = []
 
-    async def _mock_enqueue(submission_id: UUID) -> None:
+    async def _mock_run_provisioning(submission_id: UUID, session: object) -> None:
         provisioning_calls.append(submission_id)
 
     with patch(
-        "rac_control_plane.services.approvals.record._enqueue_provisioning_stub",
-        side_effect=_mock_enqueue,
+        "rac_control_plane.services.approvals.record._run_provisioning_background",
+        side_effect=_mock_run_provisioning,
     ):
         response = await client.post(
             f"/submissions/{sub_id}/approvals/it",
@@ -290,7 +290,7 @@ async def test_it_approve_enqueues_provisioning(client, db_setup, mock_oidc) -> 
     assert data["status"] == "approved", data
 
     assert len(provisioning_calls) == 1, (
-        f"Expected provisioning stub to be called once, got {provisioning_calls}"
+        f"Expected provisioning background to be called once, got {provisioning_calls}"
     )
     assert provisioning_calls[0] == sub_id
 
@@ -326,7 +326,7 @@ async def test_full_approval_lifecycle(client, db_session, db_setup, mock_oidc) 
 
     # Step 2: IT approves
     with patch(
-        "rac_control_plane.services.approvals.record._enqueue_provisioning_stub",
+        "rac_control_plane.services.approvals.record._run_provisioning_background",
         new_callable=AsyncMock,
     ):
         r2 = await client.post(

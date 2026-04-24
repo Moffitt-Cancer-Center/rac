@@ -17,6 +17,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     MetaData,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -108,8 +109,18 @@ class Submission(Base):
     )
 
 
+class AccessMode(StrEnum):
+    """App access mode."""
+    token_required = "token_required"  # noqa: S105
+    public = "public"
+
+
 class App(Base):
-    """Application (container image) record."""
+    """Application record: keyed on slug, tracks current approved submission.
+
+    Phase 5 extends the original minimal App model with full provisioning fields.
+    Migration 0006 adds the new columns.
+    """
     __tablename__ = "app"
 
     id: Mapped[UUID] = mapped_column(
@@ -117,17 +128,32 @@ class App(Base):
         primary_key=True,
         server_default=func.text("uuidv7()"),
     )
-    submission_id: Mapped[UUID] = mapped_column(
+    slug: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    pi_principal_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    dept_fallback: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    current_submission_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("submission.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    registry_url: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_port: Mapped[int] = mapped_column(nullable=False, default=8000)
+    cpu_cores: Mapped[float] = mapped_column(Numeric(4, 2), nullable=False, default=0.25)
+    memory_gb: Mapped[float] = mapped_column(Numeric(4, 2), nullable=False, default=0.5)
+    access_mode: Mapped[AccessMode] = mapped_column(
+        Enum(AccessMode, name="app_access_mode", native_enum=True, create_type=False),
+        nullable=False,
+        default=AccessMode.token_required,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -357,7 +383,10 @@ class AccessLog(Base):
 
 
 class SigningKeyVersion(Base):
-    """Signing key for token generation."""
+    """Signing key for token generation.
+
+    Phase 5 adds app_slug to scope keys per app.
+    """
     __tablename__ = "signing_key_version"
 
     id: Mapped[UUID] = mapped_column(
@@ -365,8 +394,10 @@ class SigningKeyVersion(Base):
         primary_key=True,
         server_default=func.text("uuidv7()"),
     )
+    app_slug: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    kv_kid: Mapped[str | None] = mapped_column(String(512), nullable=True)
     kv_version_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    algorithm: Mapped[str] = mapped_column(String(20), default="RS256")
+    algorithm: Mapped[str] = mapped_column(String(20), default="ES256")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

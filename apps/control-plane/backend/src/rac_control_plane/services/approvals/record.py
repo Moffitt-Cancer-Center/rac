@@ -18,6 +18,7 @@ from rac_control_plane.auth.principal import Principal
 from rac_control_plane.data.models import ApprovalEvent, Submission, SubmissionStatus
 from rac_control_plane.errors import ConflictError
 from rac_control_plane.metrics import approval_duration_histogram
+from rac_control_plane.services.provisioning.orchestrator import provision_submission
 from rac_control_plane.services.submissions.fsm import (
     InvalidTransitionError,
     transition,
@@ -49,15 +50,29 @@ _DECISION_EVENT: dict[tuple[str, str], str] = {
 
 
 # ---------------------------------------------------------------------------
-# Provisioning stub (Task 6 will replace this with the real orchestrator)
+# Provisioning background task wrapper (Task 6 wired)
 # ---------------------------------------------------------------------------
 
-async def _enqueue_provisioning_stub(submission_id: UUID) -> None:
-    """Stub for provisioning enqueue.  TODO(task-6): wire real orchestrator."""
-    logger.info(
-        "provisioning_enqueued_stub",
-        submission_id=str(submission_id),
-    )
+async def _run_provisioning_background(
+    submission_id: UUID,
+    session: AsyncSession,
+) -> None:
+    """Background task that runs the real provisioning orchestrator."""
+    from sqlalchemy import select
+
+    from rac_control_plane.data.models import Submission as SubmissionModel
+
+    try:
+        result = await session.execute(
+            select(SubmissionModel).where(SubmissionModel.id == submission_id)
+        )
+        submission = result.scalar_one_or_none()
+        if submission is None:
+            logger.warning("provisioning_submission_not_found", submission_id=str(submission_id))
+            return
+        await provision_submission(session, submission)
+    except Exception:
+        logger.exception("provisioning_background_error", submission_id=str(submission_id))
 
 
 # ---------------------------------------------------------------------------
@@ -149,8 +164,8 @@ async def record_approval(
             {"decision": decision, "stage": stage},
         )
 
-    # Step 7: enqueue provisioning on IT approval
+    # Step 7: enqueue provisioning on IT approval (Task 6: real orchestrator)
     if event == "it_approved":
-        await _enqueue_provisioning_stub(submission.id)
+        await _run_provisioning_background(submission.id, session)
 
     return submission
