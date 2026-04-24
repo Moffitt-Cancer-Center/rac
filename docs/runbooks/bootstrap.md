@@ -418,7 +418,97 @@ az deployment sub create \
 
 This second deploy is idempotent: all other resources remain unchanged; only the conditional DNS Zone Contributor role assignment is created.
 
-## 10. Idempotency Check
+## 10. Phase 6 Shim Deployment
+
+After Phase 6 ships (migration 0009 applied, shim image pushed to ACR), complete
+the following steps to activate the Token-Check Shim.
+
+### 10a. Set the rac_shim role password
+
+Migration 0009 creates the `rac_shim` Postgres role with a placeholder password.
+The placeholder is intentionally invalid — the shim will refuse to connect until
+you set a real password.
+
+Connect to the Postgres server as the admin role and run:
+
+```sql
+ALTER ROLE rac_shim WITH PASSWORD '<strong-random-secret>';
+```
+
+Generate a strong random secret (at least 32 bytes of entropy):
+
+```bash
+openssl rand -base64 32
+```
+
+### 10b. Store the DSN in Key Vault
+
+Build the full DSN that the shim will use and store it in the platform Key Vault:
+
+```bash
+# Retrieve the Postgres FQDN from Azure
+PG_HOST=$(az postgres flexible-server show \
+  --resource-group rg-rac-dev \
+  --name <pg-server-name> \
+  --query "fullyQualifiedDomainName" -o tsv)
+
+SHIM_DSN="postgresql+asyncpg://rac_shim:<password>@${PG_HOST}:5432/<db-name>?ssl=require"
+
+# Store in the platform Key Vault under the name shim-database-dsn
+KV_NAME=$(az keyvault list \
+  --resource-group rg-rac-dev \
+  --query "[0].name" -o tsv)
+
+az keyvault secret set \
+  --vault-name "$KV_NAME" \
+  --name shim-database-dsn \
+  --value "$SHIM_DSN"
+```
+
+Also store the cookie HMAC secret (used to sign the `rac_session` cookie):
+
+```bash
+HMAC_SECRET=$(openssl rand -base64 32)
+
+az keyvault secret set \
+  --vault-name "$KV_NAME" \
+  --name shim-cookie-hmac \
+  --value "$HMAC_SECRET"
+```
+
+### 10c. Re-deploy with shimImageName
+
+After the shim image has been built and pushed to ACR (Phase 6 GHA pipeline),
+re-run the infra-deploy workflow with `shimImageName` set:
+
+```bash
+SHIM_IMAGE="<acr-login-server>/rac-shim:v1.0"
+
+az deployment sub create \
+  --location $AZURE_LOCATION \
+  --template-file infra/main.bicep \
+  --parameters infra/environments/dev.bicepparam \
+  --parameters shimImageName="$SHIM_IMAGE" \
+               shimIssuer="https://login.microsoftonline.com/<TENANT_ID>/v2.0" \
+               shimCookieDomain=".<parent-domain>" \
+               shimInstitutionName="Moffitt Cancer Center" \
+  pgAdminPassword=$RAC_PG_ADMIN_PASSWORD \
+  appGwTlsCertKvSecretId=$RAC_APPGW_TLS_CERT_KV_SECRET_ID
+```
+
+This deploy:
+1. Creates the `rac-shim-dev` Container App with `min-replicas=1`.
+2. Updates the App Gateway backend pool to target the shim's internal FQDN.
+3. Wires Key Vault secret references for `shim-database-dsn` and `shim-cookie-hmac`.
+
+### 10d. Key Vault access note
+
+The shim's managed identity (`id-rac-shim-<env>`) needs `Key Vault Secrets User`
+on the platform Key Vault to resolve the `shim-database-dsn` and `shim-cookie-hmac`
+secrets at startup.  This role assignment is already created by
+`infra/modules/role-assignments.bicep` (Phase 1) — no manual action is required.
+
+## 11. Idempotency Check
 
 Run `infra-deploy` again (or trigger manually) against the same subscription.
 
