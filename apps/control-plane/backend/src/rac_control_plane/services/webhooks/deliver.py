@@ -155,10 +155,14 @@ async def _deliver_to_subscription(
                 content=body_bytes,
                 headers=headers,
             )
-            if resp.status_code < 500:
+            if 200 <= resp.status_code < 300:
                 success = True
                 break
-            # 5xx — retry
+            if 400 <= resp.status_code < 500:
+                # 4xx — subscriber-side error (misconfigured URL, auth, bad payload).
+                # Don't retry; count as a failure so persistently broken endpoints auto-disable.
+                break
+            # 5xx — retry with backoff
         except (httpx.HTTPError, OSError):
             pass  # network error — retry
 

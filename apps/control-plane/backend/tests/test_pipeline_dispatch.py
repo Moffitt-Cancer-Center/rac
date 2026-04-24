@@ -417,19 +417,17 @@ async def test_create_submission_on_dispatch_422_fails_submission(
         f"Expected code='pipeline_payload_too_large', got {data}"
     )
 
-    # DB: submission status must be pipeline_error
-    # The row was committed (the route commits after create_submission).
-    # But the ValidationApiError is re-raised inside create_submission and
-    # the session might not commit depending on transaction handling.
-    # We verify via db_setup which can query committed rows.
+    # DB: submission row must exist AND be in pipeline_error status.
+    # create_submission commits the pipeline_error state before re-raising
+    # ValidationApiError, so this state survives into db_setup's session.
     stmt = select(Submission).where(
         Submission.submitter_principal_id == test_user_oid
     )
     result = await db_setup.scalars(stmt)
     rows = list(result)
-    # The submission row exists but has pipeline_error status
-    # (transaction may or may not have committed depending on error path)
-    if rows:
-        assert rows[0].status == SubmissionStatus.pipeline_error, (
-            f"Expected status=pipeline_error, got {rows[0].status}"
-        )
+    assert len(rows) == 1, (
+        f"Expected exactly 1 submission row, got {len(rows)}"
+    )
+    assert rows[0].status == SubmissionStatus.pipeline_error, (
+        f"Expected status=pipeline_error, got {rows[0].status}"
+    )

@@ -134,10 +134,11 @@ async def create_submission(
         try:
             await dispatch_fn(client_payload)
         except ValidationApiError:
-            # Payload too large — mark submission failed and propagate so
-            # the route returns 422 to the user.
+            # Payload too large — mark submission failed, COMMIT the
+            # pipeline_error state so it survives the re-raise, and propagate
+            # so the route returns 422 to the user.
             submission.status = SubmissionStatus.pipeline_error
-            await session.flush()
+            await session.commit()
             logger.error(
                 "pipeline_dispatch_payload_too_large",
                 submission_id=str(submission.id),
