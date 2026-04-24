@@ -23,6 +23,12 @@ from rac_control_plane.data.models import (
     SubmissionStatus,
 )
 from rac_control_plane.errors import ValidationApiError
+from rac_control_plane.manifest.parser import (
+    SharedReferenceNotYetSupportedError,
+    manifest_from_dict,
+    reject_shared_references,
+)
+from rac_control_plane.manifest.schema import ManifestV1
 from rac_control_plane.services.github_validation import validate_repo
 from rac_control_plane.services.ownership.pi_validation import ValidationResult
 from rac_control_plane.services.submissions.slug import derive_slug
@@ -36,6 +42,7 @@ async def create_submission(
     request: SubmissionCreateRequest,
     existing_slugs: set[str],
     *,
+    parsed_manifest: ManifestV1 | None = None,
     emit_submission_metric: Callable[[str], None] | None = None,
     dispatch_fn: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     detection_fn: (
@@ -87,17 +94,36 @@ async def create_submission(
                 f" {pi_result.reason}",
             )
 
-    # Step 2: Derive slug (pure)
+    # Step 2: Resolve manifest — validate if request.manifest is a dict (AC8.6)
+    resolved_manifest_json: dict[str, Any] | None = None
+
+    if parsed_manifest is not None:
+        # Caller already validated and passed a ManifestV1 — use it directly
+        resolved_manifest_json = parsed_manifest.model_dump(mode="json")
+    elif isinstance(request.manifest, dict):
+        # Validate the dict and reject shared_reference assets (AC8.6)
+        try:
+            validated = manifest_from_dict(request.manifest)
+            reject_shared_references(validated)
+        except SharedReferenceNotYetSupportedError as exc:
+            raise ValidationApiError(
+                code="shared_reference_not_supported",
+                public_message=exc.message,
+            ) from exc
+        resolved_manifest_json = validated.model_dump(mode="json")
+    # else: no manifest provided — leave as None for now
+
+    # Step 3: Derive slug (pure)
     slug = derive_slug(request.paper_title, str(request.github_repo_url), existing_slugs)
 
-    # Step 3: Validate GitHub repository (impure, may raise)
+    # Step 4: Validate GitHub repository (impure, may raise)
     await validate_repo(
         request.github_repo_url,
         request.git_ref,
         request.dockerfile_path,
     )
 
-    # Step 3: Create submission with validated data (impure)
+    # Step 5: Create submission with validated data (impure)
     submission = Submission(
         slug=slug,
         status=SubmissionStatus.awaiting_scan,
@@ -108,13 +134,13 @@ async def create_submission(
         dockerfile_path=request.dockerfile_path,
         pi_principal_id=request.pi_principal_id,
         dept_fallback=request.dept_fallback,
-        manifest=request.manifest,
+        manifest=resolved_manifest_json,
     )
 
     session.add(submission)
     await session.flush()  # Get the server-generated UUIDv7
 
-    # Step 4: Record approval event for submission creation (impure)
+    # Step 6: Record approval event for submission creation (impure)
     approval_event = ApprovalEvent(
         submission_id=submission.id,
         kind="submission_created",

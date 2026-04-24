@@ -44,6 +44,7 @@ TransitionEvent = (
     | Literal["user_resolves_action_needed"]
     | Literal["detection_needs_user_action"]
     | Literal["detection_resolved"]
+    | Literal["asset_failed"]
 )
 
 
@@ -95,6 +96,8 @@ _TRANSITION_TABLE: dict[tuple[SubmissionStatus, TransitionEvent], SubmissionStat
     (SubmissionStatus.awaiting_scan, "detection_needs_user_action"): SubmissionStatus.needs_user_action,
     # needs_user_action → awaiting_scan when all error findings have been decided
     (SubmissionStatus.needs_user_action, "detection_resolved"): SubmissionStatus.awaiting_scan,
+    # Asset-failure transition (Phase 8): asset hash_mismatch or unreachable → needs_user_action
+    (SubmissionStatus.awaiting_scan, "asset_failed"): SubmissionStatus.needs_user_action,
     # From needs_assistance
     (SubmissionStatus.needs_assistance, "user_resolves_action_needed"): SubmissionStatus.awaiting_research_review,
     # From it_rejected

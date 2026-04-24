@@ -24,6 +24,7 @@ from rac_control_plane.data.models import SubmissionStatus
 from rac_control_plane.data.submission_repo import get_by_id
 from rac_control_plane.errors import ConflictError, NotFoundError
 from rac_control_plane.services.provisioning.orchestrator import provision_submission
+from rac_control_plane.services.submissions.finalize import finalize_submission
 
 logger = structlog.get_logger(__name__)
 
@@ -177,4 +178,63 @@ async def retry_provisioning(
         success=outcome.success,
         error_code=outcome.error.code if outcome.error else None,
         error_detail=outcome.error.detail if outcome.error else None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/submissions/{id}/force-finalize
+# ---------------------------------------------------------------------------
+
+
+class ForceFinalizeResponse(BaseModel):
+    """Response from a force-finalize call."""
+
+    submission_id: UUID
+    new_status: str
+
+
+@router.post(
+    "/submissions/{submission_id}/force-finalize",
+    response_model=ForceFinalizeResponse,
+)
+async def force_finalize(
+    submission_id: str,
+    principal: Annotated[Principal, Depends(require_admin)],
+    session: AsyncSession = Depends(get_session),
+) -> ForceFinalizeResponse:
+    """Re-run finalize_submission for a stuck submission.
+
+    Used when an asset completed but finalize_submission crashed (e.g. DB error),
+    leaving the submission in awaiting_scan indefinitely.
+
+    Auth: admin role required.
+
+    Returns:
+        ForceFinalizeResponse with the resulting submission status.
+
+    Raises:
+        404: Submission not found.
+        403: Principal lacks admin role.
+    """
+    try:
+        sub_uuid = UUID(submission_id)
+    except ValueError as exc:
+        raise NotFoundError(public_message="Submission not found") from exc
+
+    submission = await get_by_id(session, sub_uuid)
+    if submission is None:
+        raise NotFoundError(public_message="Submission not found")
+
+    logger.info(
+        "force_finalize_requested",
+        submission_id=str(sub_uuid),
+        admin_oid=str(principal.oid),
+    )
+
+    new_status = await finalize_submission(session, sub_uuid)
+    await session.commit()
+
+    return ForceFinalizeResponse(
+        submission_id=sub_uuid,
+        new_status=str(new_status),
     )

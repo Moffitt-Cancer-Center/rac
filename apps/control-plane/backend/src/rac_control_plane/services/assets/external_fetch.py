@@ -66,6 +66,7 @@ async def fetch_external_asset(
     enforce_https: bool = True,
     account_url: str | None = None,
     container_name: str = "researcher-uploads",
+    dispatch_fn: Callable[..., Any] | None = None,  # forwarded to finalize_submission
 ) -> Asset:
     """Fetch an external URL, verify sha256, insert asset row.
 
@@ -141,6 +142,7 @@ async def fetch_external_asset(
             account_url=account_url,
             container_name=container_name,
             timeout_seconds=timeout_seconds,
+            dispatch_fn=dispatch_fn,
         )
     finally:
         if own_client:
@@ -161,8 +163,11 @@ async def _do_fetch(
     account_url: str,
     container_name: str,
     timeout_seconds: float,
+    dispatch_fn: Callable[..., Any] | None = None,
 ) -> Asset:
     """Inner fetch logic — separated for cleaner error handling."""
+    from rac_control_plane.services.submissions.finalize import finalize_submission
+
     # Try to fetch the URL
     try:
         chunks_and_hash = await _stream_and_hash(http_client, url_str, blob_client)
@@ -187,6 +192,8 @@ async def _do_fetch(
         )
         session.add(asset)
         await session.flush()
+        # Signal finalization (will detect the unreachable asset and block pipeline)
+        await finalize_submission(session, submission_id, dispatch_fn=dispatch_fn)
         raise ExternalAssetError(
             code="unreachable",
             message=(
@@ -223,6 +230,8 @@ async def _do_fetch(
         )
         session.add(asset)
         await session.flush()
+        # Signal finalization (will detect hash_mismatch and block pipeline)
+        await finalize_submission(session, submission_id, dispatch_fn=dispatch_fn)
         raise HashMismatchError(
             expected=declared_sha256,
             actual=computed_sha256,
@@ -244,6 +253,8 @@ async def _do_fetch(
     )
     session.add(asset)
     await session.flush()
+    # Signal finalization: check if this successful fetch unblocks the pipeline
+    await finalize_submission(session, submission_id, dispatch_fn=dispatch_fn)
     return asset
 
 

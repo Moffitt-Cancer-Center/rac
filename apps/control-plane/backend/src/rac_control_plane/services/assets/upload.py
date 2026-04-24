@@ -34,6 +34,7 @@ async def finalize_upload(
     blob_client_factory: Callable[..., Any] | None = None,  # for test injection
     account_url: str | None = None,
     container_name: str = "researcher-uploads",
+    dispatch_fn: Callable[..., Any] | None = None,  # forwarded to finalize_submission
 ) -> Asset:
     """Verify a researcher-uploaded blob and insert an asset row.
 
@@ -132,6 +133,10 @@ async def finalize_upload(
     )
     session.add(asset)
     await session.flush()
+
+    # Signal-trigger finalization: check if this upload unblocks the pipeline
+    from rac_control_plane.services.submissions.finalize import finalize_submission
+    await finalize_submission(session, submission_id, dispatch_fn=dispatch_fn)
 
     return asset
 
