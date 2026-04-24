@@ -23,6 +23,7 @@ from rac_control_plane.data.submission_repo import (
     get_existing_slugs,
     list_submissions,
 )
+from rac_control_plane.metrics import submission_counter
 from rac_control_plane.services.submissions.create import create_submission
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
@@ -73,7 +74,14 @@ async def post_submission(
     existing_slugs = await get_existing_slugs(session)
 
     # Create submission (may raise ValidationApiError)
-    submission = await create_submission(session, principal, request, existing_slugs)
+    # Pass metric callback to emit submission counter with the target status
+    submission = await create_submission(
+        session,
+        principal,
+        request,
+        existing_slugs,
+        emit_submission_metric=lambda status: submission_counter.add(1, {"status": status}),
+    )
 
     # Commit the transaction
     await session.commit()

@@ -5,6 +5,8 @@ Combines pure slug derivation and validation with database writes.
 """
 
 
+from collections.abc import Callable
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from rac_control_plane.api.schemas.submissions import SubmissionCreateRequest
@@ -19,6 +21,8 @@ async def create_submission(
     principal: Principal,
     request: SubmissionCreateRequest,
     existing_slugs: set[str],
+    *,
+    emit_submission_metric: Callable[[str], None] | None = None,
 ) -> Submission:
     """Create a new submission with validation and persistence.
 
@@ -26,12 +30,15 @@ async def create_submission(
     1. Slug derivation (pure)
     2. GitHub repository validation (impure, raises on error)
     3. Database write with approval_event (impure)
+    4. Metric emission (impure, via callback)
 
     Args:
         session: SQLAlchemy async session
         principal: Current authenticated principal
         request: Submission creation request
         existing_slugs: Set of already-used slugs
+        emit_submission_metric: Optional callback to emit submission metric with status.
+                                Called with the submission status string.
 
     Returns:
         The created Submission ORM object
@@ -77,5 +84,9 @@ async def create_submission(
 
     session.add(approval_event)
     await session.flush()
+
+    # Step 5: Emit metric for the new submission status (impure, optional)
+    if emit_submission_metric:
+        emit_submission_metric(submission.status.value)
 
     return submission
