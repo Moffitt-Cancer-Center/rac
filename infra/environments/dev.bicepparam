@@ -2,9 +2,9 @@ using '../main.bicep'
 
 // DEV ENVIRONMENT: Burstable Postgres, minimal redundancy, dev-friendly KV settings
 param racEnv = 'dev'
-param parentDomain = 'rac-dev.example.org'
+param parentDomain = 'rac-dev.rac.checkwithscience.com'
 param location = 'eastus'
-param idpTenantId = '00000000-0000-0000-0000-000000000000'
+param idpTenantId = 'f64ec93a-c5a6-4ba3-afca-8b10d684f3c1'
 param acrName = 'racdevacr001'
 param storageAccountName = 'racdevst001'
 param pgServerName = 'rac-dev-pg'

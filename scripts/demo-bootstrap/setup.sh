@@ -123,6 +123,19 @@ done
 echo
 
 # ---------------------------------------------------------------------------
+# 4b. Enable Defender for Containers (subscription-scope)
+# ---------------------------------------------------------------------------
+echo "==> Ensuring Defender for Containers on Standard tier..."
+DEFENDER_TIER=$(az security pricing show --name Containers --query pricingTier -o tsv 2>/dev/null || echo "")
+if [[ "$DEFENDER_TIER" == "Standard" ]]; then
+  echo "    [skip] already Standard"
+else
+  az security pricing create --name Containers --tier Standard --only-show-errors >/dev/null
+  echo "    [set]  Standard"
+fi
+echo
+
+# ---------------------------------------------------------------------------
 # 5. Grant Owner on the subscription
 # ---------------------------------------------------------------------------
 echo "==> Ensuring Owner role on subscription..."

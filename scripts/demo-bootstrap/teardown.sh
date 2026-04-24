@@ -73,5 +73,15 @@ for NAME in "${APP_NAMES[@]}"; do
   az ad app delete --id "$APP_ID" --only-show-errors
 done
 
+# Revert Defender for Containers to Free tier (subscription-scope).
+echo "==> Reverting Defender for Containers to Free tier..."
+CURRENT_TIER=$(az security pricing show --name Containers --query pricingTier -o tsv 2>/dev/null || echo "")
+if [[ "$CURRENT_TIER" == "Standard" ]]; then
+  az security pricing create --name Containers --tier Free --only-show-errors >/dev/null
+  echo "    [set]  Free"
+else
+  echo "    [skip] tier was '$CURRENT_TIER' — no change"
+fi
+
 echo
 echo "Teardown complete."

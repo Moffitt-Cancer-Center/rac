@@ -26,8 +26,9 @@ manually, because:
    - `RAC Infra Deploy` — GHA deploy service principal
 3. Creates the service principal for `RAC Infra Deploy`.
 4. Adds federated credentials for `repo:<github-repo>:environment:{dev,staging,prod}`.
-5. Grants the SP `Owner` on the target subscription.
-6. Emits a block of `KEY=VALUE` lines ready to paste into GitHub Environment
+5. Enables Defender for Containers on the subscription (Standard tier).
+6. Grants the SP `Owner` on the target subscription.
+7. Emits a block of `KEY=VALUE` lines ready to paste into GitHub Environment
    secrets.
 
 Each step is idempotent: re-running on an already-bootstrapped subscription
@@ -35,9 +36,10 @@ picks up the existing apps/SP/creds/role by name rather than failing.
 
 ## What teardown.sh does
 
-Deletes the three apps (which cascades to SP + federated credentials) and
-removes the subscription-scope Owner role assignment. It does NOT touch any
-deployed Azure resources — use `scripts/teardown.sh` for those.
+Deletes the three apps (which cascades to SP + federated credentials),
+removes the subscription-scope Owner role assignment, and reverts Defender
+for Containers to the Free tier. It does NOT touch any deployed Azure
+resources — use `scripts/teardown.sh` for those.
 
 ## Usage
 
