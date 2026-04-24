@@ -187,7 +187,11 @@ class ScanResult(Base):
 
 
 class DetectionFinding(Base):
-    """Append-only: detection finding (policy violation)."""
+    """Append-only: detection finding produced by the rule engine.
+
+    Schema migration 0004 replaces the Phase 2 placeholder columns
+    (kind, description) with the full rule-engine schema. See migration 0004.
+    """
     __tablename__ = "detection_finding"
 
     id: Mapped[UUID] = mapped_column(
@@ -199,10 +203,56 @@ class DetectionFinding(Base):
         PG_UUID(as_uuid=True),
         ForeignKey("submission.id", ondelete="RESTRICT"),
         nullable=False,
+        index=True,
     )
-    kind: Mapped[str] = mapped_column(String(100), nullable=False)
+    rule_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    rule_version: Mapped[int] = mapped_column(nullable=False)
     severity: Mapped[str] = mapped_column(String(20), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    detail: Mapped[str] = mapped_column(Text, nullable=False)
+    file_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    line_ranges: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    auto_fix: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
+
+
+class DetectionFindingDecision(Base):
+    """Append-only: a researcher or admin decision on a detection finding.
+
+    Design deviation: instead of UPDATE on detection_finding, decisions are
+    stored in a separate append-only table. The UI LEFT JOINs on the most
+    recent decision per finding. See docs/implementation-plans/...README.md
+    "Approved design deviations".
+    """
+    __tablename__ = "detection_finding_decision"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.text("uuidv7()"),
+    )
+    detection_finding_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("detection_finding.id", ondelete="RESTRICT", name="fk_dfd_finding_id"),
+        nullable=False,
+        index=True,
+    )
+    decision: Mapped[str] = mapped_column(
+        Enum("accept", "override", "auto_fix", "dismiss",
+             name="detection_finding_decision_decision",
+             native_enum=True,
+             create_type=False),
+        nullable=False,
+    )
+    decision_actor_principal_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=False
+    )
+    decision_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -40,6 +40,8 @@ TransitionEvent = (
     | Literal["provisioning_completed"]
     | Literal["user_requests_assistance"]
     | Literal["user_resolves_action_needed"]
+    | Literal["detection_needs_user_action"]
+    | Literal["detection_resolved"]
 )
 
 
@@ -81,6 +83,11 @@ _TRANSITION_TABLE: dict[tuple[SubmissionStatus, TransitionEvent], SubmissionStat
     (SubmissionStatus.approved, "provisioning_completed"): SubmissionStatus.deployed,
     # From needs_user_action
     (SubmissionStatus.needs_user_action, "user_resolves_action_needed"): SubmissionStatus.awaiting_research_review,
+    # Detection-engine transitions (Phase 4)
+    # awaiting_scan → needs_user_action when detection finds issues requiring user action
+    (SubmissionStatus.awaiting_scan, "detection_needs_user_action"): SubmissionStatus.needs_user_action,
+    # needs_user_action → awaiting_scan when all error findings have been decided
+    (SubmissionStatus.needs_user_action, "detection_resolved"): SubmissionStatus.awaiting_scan,
     # From needs_assistance
     (SubmissionStatus.needs_assistance, "user_resolves_action_needed"): SubmissionStatus.awaiting_research_review,
     # From it_rejected

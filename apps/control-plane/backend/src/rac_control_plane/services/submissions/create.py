@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from rac_control_plane.api.schemas.submissions import SubmissionCreateRequest
 from rac_control_plane.auth.principal import Principal
-from rac_control_plane.data.models import ApprovalEvent, Submission, SubmissionStatus
+from rac_control_plane.data.models import ApprovalEvent, DetectionFinding, Submission, SubmissionStatus
 from rac_control_plane.errors import ValidationApiError
 from rac_control_plane.services.github_validation import validate_repo
 from rac_control_plane.services.submissions.slug import derive_slug
@@ -31,6 +31,7 @@ async def create_submission(
     *,
     emit_submission_metric: Callable[[str], None] | None = None,
     dispatch_fn: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    detection_fn: Callable[[AsyncSession, Submission], Awaitable[list[DetectionFinding]]] | None = None,
 ) -> Submission:
     """Create a new submission with validation and persistence.
 
@@ -99,11 +100,24 @@ async def create_submission(
     session.add(approval_event)
     await session.flush()
 
-    # Step 5: Emit metric for the new submission status (impure, optional)
+    # Step 5: Run detection if a detection function was provided
+    if detection_fn is not None:
+        try:
+            await detection_fn(session, submission)
+        except Exception as exc:
+            # Detection failures are non-fatal for the submission itself;
+            # log the error but do not block the response.
+            logger.error(
+                "detection_failed",
+                submission_id=str(submission.id),
+                error=str(exc),
+            )
+
+    # Step 6: Emit metric for the new submission status (impure, optional)
     if emit_submission_metric:
         emit_submission_metric(submission.status.value)
 
-    # Step 6: Trigger pipeline dispatch if a dispatch function was provided.
+    # Step 7: Trigger pipeline dispatch if a dispatch function was provided.
     #
     # dispatch_fn is called with the raw client_payload dict.  The caller
     # (api/routes/submissions.py) is responsible for building that payload
