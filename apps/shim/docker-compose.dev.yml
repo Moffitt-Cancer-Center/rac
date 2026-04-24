@@ -1,0 +1,148 @@
+# RAC Shim — local development stack
+#
+# HOW TO RUN
+# ----------
+# 1. Build the test Postgres image (needed for pg_uuidv7 extension):
+#
+#      cd /path/to/rac
+#      docker build -t rac-pg-uuidv7:test -f apps/control-plane/backend/docker/postgres/Dockerfile .
+#
+# 2. Start the stack:
+#
+#      docker compose -f apps/shim/docker-compose.dev.yml up --build
+#
+# 3. Hit the shim at http://localhost:8080
+#    The fake-upstream app runs at http://localhost:9000 (port mapped for inspection).
+#    Access the shim via slug "dev" — the shim resolves slug from the Host header:
+#
+#      curl -H "Host: dev.rac.local" http://localhost:8080/
+#
+# LIMITATIONS
+# -----------
+# - No Azure Key Vault emulation.  The shim requires a real Key Vault URI and a
+#   valid Azure credential to fetch public signing keys at startup.  For unit and
+#   integration tests, Key Vault is bypassed via dependency injection (see
+#   tests/conftest.py).  In this local stack, omit KV-dependent env vars and the
+#   shim falls back to its test/dev mode (app_registry loaded from DB only; KV key
+#   fetches will fail unless you supply a real AZURE_* credential via environment).
+#
+# - The database schema must be migrated before the shim starts.  The init.sql
+#   below bootstraps the extension and rac_shim role.  Run Alembic migrations
+#   from the control-plane project to create all tables:
+#
+#      cd apps/control-plane/backend
+#      uv run alembic upgrade head
+#
+# - The fake-upstream app returns a static JSON response.  It is only useful for
+#   verifying the shim proxy path; it does not implement the researcher-app contract.
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Postgres with pg_uuidv7 extension
+  # Same image used by the control-plane test suite.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: rac-pg-uuidv7:test
+    container_name: rac-shim-dev-pg
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rac_dev
+    ports:
+      - "15432:5432"
+    volumes:
+      - rac_shim_pg_data:/var/lib/postgresql/data
+      - ./dev/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Fake upstream app — simulates a researcher app behind the shim.
+  # Serves a trivial HTTP response on port 8000 (internal); mapped to 9000.
+  # The shim routes traffic here based on the app registry loaded from Postgres.
+  # ---------------------------------------------------------------------------
+  fake-upstream:
+    image: python:3.12-slim
+    container_name: rac-shim-dev-upstream
+    command: >
+      python -c "
+      import http.server, json
+
+      class Handler(http.server.BaseHTTPRequestHandler):
+          def do_GET(self):
+              body = json.dumps({'slug': 'dev', 'msg': 'hello from fake upstream'}).encode()
+              self.send_response(200)
+              self.send_header('Content-Type', 'application/json')
+              self.send_header('Content-Length', str(len(body)))
+              self.end_headers()
+              self.wfile.write(body)
+          def log_message(self, fmt, *args):
+              print(f'[fake-upstream] {fmt % args}')
+
+      http.server.HTTPServer(('0.0.0.0', 8000), Handler).serve_forever()
+      "
+    ports:
+      - "9000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Shim — built from apps/shim/Dockerfile.
+  # Build context is the repo root so the multi-stage build can copy the
+  # workspace pyproject.toml and uv.lock.
+  # ---------------------------------------------------------------------------
+  shim:
+    build:
+      context: ../..
+      dockerfile: apps/shim/Dockerfile
+    container_name: rac-shim-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fake-upstream:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      # Database — connect as rac_shim (created by dev/init.sql + Alembic migration)
+      RAC_SHIM_DATABASE_DSN: "postgresql+asyncpg://rac_shim:rac_shim_dev@postgres:5432/rac_dev"
+
+      # Cookie HMAC — dev-only placeholder (never use in staging/prod)
+      RAC_SHIM_COOKIE_HMAC_SECRET: "dev-local-hmac-secret-replace-in-prod"
+
+      # Key Vault — leave empty to skip KV-backed key fetching in dev
+      # To test KV integration locally, set these to your real Azure values
+      # and export AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID.
+      RAC_SHIM_KV_URI: "${RAC_SHIM_KV_URI:-}"
+
+      # Routing
+      RAC_SHIM_PARENT_DOMAIN: "rac.local"
+      RAC_SHIM_ISSUER: "https://login.microsoftonline.com/dev/v2.0"
+      RAC_SHIM_COOKIE_DOMAIN: ".rac.local"
+      RAC_SHIM_ACA_INTERNAL_SUFFIX: "internal.dev.local"
+
+      # Branding
+      RAC_SHIM_INSTITUTION_NAME: "Dev Institution"
+      RAC_SHIM_BRAND_LOGO_URL: ""
+      RAC_SHIM_ENV: "dev"
+
+      # Metrics
+      RAC_SHIM_METRICS_ENABLED: "true"
+      # RAC_SHIM_OTLP_ENDPOINT: "http://otel-collector:4317"  # uncomment if running collector
+
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/_shim/health')\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  rac_shim_pg_data:
