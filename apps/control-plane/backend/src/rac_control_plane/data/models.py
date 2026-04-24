@@ -322,7 +322,11 @@ class ApprovalEvent(Base):
 
 
 class ReviewerToken(Base):
-    """Long-lived token for approver access."""
+    """Long-lived reviewer token issued by the Control Plane.
+
+    Phase 7 extends the Phase-2 placeholder with full issuer fields.
+    Migration 0010 adds the new columns.
+    """
     __tablename__ = "reviewer_token"
 
     id: Mapped[UUID] = mapped_column(
@@ -330,6 +334,7 @@ class ReviewerToken(Base):
         primary_key=True,
         server_default=func.text("uuidv7()"),
     )
+    # Phase 2 legacy field — kept for backward compat; Phase 7 uses issued_by_principal_id.
     principal_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
     jti: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -338,10 +343,27 @@ class ReviewerToken(Base):
         nullable=False,
         server_default=func.now(),
     )
+    # Phase 7 fields
+    app_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("app.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    reviewer_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    kid: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    issued_by_principal_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True
+    )
+    scope: Mapped[str] = mapped_column(String(50), nullable=False, default="read")
 
 
 class RevokedToken(Base):
-    """Append-only: revoked token (audit)."""
+    """Append-only: revoked token (audit).
+
+    Phase 7 extends the Phase-2 placeholder with revocation metadata.
+    Migration 0010 adds the new columns.
+    """
     __tablename__ = "revoked_token"
 
     id: Mapped[UUID] = mapped_column(
@@ -354,6 +376,14 @@ class RevokedToken(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
+    )
+    # Phase 7 fields
+    revoked_by_principal_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

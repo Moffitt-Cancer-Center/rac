@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     # Detection rule settings
     detection_huge_file_threshold_bytes: int = 50 * 1024 * 1024  # 50 MB default
 
+    # Reviewer token settings (Phase 7)
+    max_reviewer_token_ttl_days: int = 180
+    issuer: str = ""  # JWT iss claim — the Control Plane's public URL; empty in dev
+    require_publication_for_public: bool = False  # gate public mode on publication DOI
+
     # Observability
     otlp_endpoint: str = "http://localhost:4317"
     metrics_enabled: bool = False
