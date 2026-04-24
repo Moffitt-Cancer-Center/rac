@@ -38,6 +38,8 @@ TransitionEvent = (
     | Literal["it_approved"]
     | Literal["it_rejected"]
     | Literal["provisioning_completed"]
+    | Literal["provisioning_failed"]
+    | Literal["request_changes"]
     | Literal["user_requests_assistance"]
     | Literal["user_resolves_action_needed"]
     | Literal["detection_needs_user_action"]
@@ -81,6 +83,11 @@ _TRANSITION_TABLE: dict[tuple[SubmissionStatus, TransitionEvent], SubmissionStat
     (SubmissionStatus.awaiting_it_review, "it_rejected"): SubmissionStatus.it_rejected,
     # From approved
     (SubmissionStatus.approved, "provisioning_completed"): SubmissionStatus.deployed,
+    # provisioning_failed stays in approved (retry gate — admin can re-trigger)
+    (SubmissionStatus.approved, "provisioning_failed"): SubmissionStatus.approved,
+    # request_changes: reviewer sends submission back to needs_assistance
+    (SubmissionStatus.awaiting_research_review, "request_changes"): SubmissionStatus.needs_assistance,
+    (SubmissionStatus.awaiting_it_review, "request_changes"): SubmissionStatus.needs_assistance,
     # From needs_user_action
     (SubmissionStatus.needs_user_action, "user_resolves_action_needed"): SubmissionStatus.awaiting_research_review,
     # Detection-engine transitions (Phase 4)
