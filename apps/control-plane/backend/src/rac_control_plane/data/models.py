@@ -155,7 +155,7 @@ class Asset(Base):
 
 
 class ScanResult(Base):
-    """Scan result (SBOM, vulns, etc)."""
+    """Scan result from the build/scan pipeline."""
     __tablename__ = "scan_result"
 
     id: Mapped[UUID] = mapped_column(
@@ -163,13 +163,22 @@ class ScanResult(Base):
         primary_key=True,
         server_default=func.text("uuidv7()"),
     )
-    app_id: Mapped[UUID] = mapped_column(
+    submission_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("app.id", ondelete="RESTRICT"),
+        ForeignKey("submission.id", ondelete="RESTRICT"),
         nullable=False,
+        index=True,
     )
-    kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    verdict: Mapped[str] = mapped_column(String(50), nullable=False)
+    effective_severity: Mapped[str] = mapped_column(String(20), nullable=False)
     findings: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    build_log_uri: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    sbom_uri: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    grype_report_uri: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    defender_report_uri: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    image_digest: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    image_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    defender_timed_out: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -218,7 +227,8 @@ class ApprovalEvent(Base):
         index=True,
     )
     kind: Mapped[str] = mapped_column(String(50), nullable=False)
-    actor_principal_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    actor_principal_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    payload: Mapped[Any] = mapped_column(JSONB, nullable=True)
     decision: Mapped[str | None] = mapped_column(String(20), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -354,11 +364,26 @@ class WebhookSubscription(Base):
         primary_key=True,
         server_default=func.text("uuidv7()"),
     )
-    principal_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
-    url: Mapped[str] = mapped_column(String(255), nullable=False)
-    filter: Mapped[Any] = mapped_column(JSONB, nullable=True)
-    secret: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    callback_url: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_types: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    secret_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    consecutive_failures: Mapped[int] = mapped_column(default=0)
+    last_delivery_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    secret_rotated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),

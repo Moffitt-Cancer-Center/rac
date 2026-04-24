@@ -9,7 +9,10 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from rac_control_plane.api.routes.agents import router as agents_router
+from rac_control_plane.api.routes.jobs import router as jobs_router
 from rac_control_plane.api.routes.submissions import router as submissions_router
+from rac_control_plane.api.routes.webhook_subscriptions import router as webhook_subs_router
+from rac_control_plane.api.routes.webhooks import router as webhooks_router
 from rac_control_plane.correlation import CorrelationIdMiddleware, get_correlation_id
 from rac_control_plane.data.db import get_session_maker
 from rac_control_plane.errors import ApiError, render_error
@@ -152,6 +155,9 @@ def create_app() -> FastAPI:
     # Register routers
     app.include_router(submissions_router, prefix="")
     app.include_router(agents_router, prefix="")
+    app.include_router(webhooks_router, prefix="")
+    app.include_router(webhook_subs_router, prefix="")
+    app.include_router(jobs_router, prefix="")
 
     # Static file mount for React SPA (must be last)
     static_dir = Path(__file__).parent / "static"

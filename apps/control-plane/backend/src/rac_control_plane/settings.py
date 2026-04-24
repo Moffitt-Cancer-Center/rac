@@ -43,6 +43,9 @@ class Settings(BaseSettings):
 
     # Webhook settings
     webhook_secret_rotation_days: int = 30
+    webhook_secret_grace_period_hours: int = 24
+    webhook_max_consecutive_failures: int = 10
+    internal_job_secret: SecretStr | None = None
 
     # GitHub pipeline dispatch settings
     gh_pipeline_owner: str = ""

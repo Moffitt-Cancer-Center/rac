@@ -52,3 +52,11 @@ approval_duration_histogram = _meter.create_histogram(
     description="Wall-clock seconds from submission creation to first approval decision.",
     unit="s",
 )
+
+# Scan verdict counter: incremented each time a pipeline callback is ingested.
+# Labeled by verdict (e.g., "passed", "rejected", "build_failed", etc.).
+scan_verdict_counter = _meter.create_counter(
+    name="rac.scans.verdict",
+    description="Scan pipeline verdicts by type.",
+    unit="1",
+)
