@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import TYPE_CHECKING
 
 import structlog
@@ -32,7 +31,7 @@ class AppRegistry:
 
     def __init__(
         self,
-        pg_pool: "asyncpg.Pool[asyncpg.Record]",
+        pg_pool: asyncpg.Pool[asyncpg.Record],
         *,
         aca_internal_suffix: str,
         refresh_interval_seconds: int = 30,

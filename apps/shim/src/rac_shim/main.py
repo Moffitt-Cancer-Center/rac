@@ -17,21 +17,20 @@ import asyncio
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
-from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
+from datetime import UTC, datetime
+from typing import Any
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import asyncpg
 import httpx
 import structlog
 from starlette.applications import Starlette
-from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from rac_shim.app_registry import AppRegistry
-from rac_shim.audit.access_record import AccessRecord, RequestInfo, build_record
+from rac_shim.audit.access_record import RequestInfo, build_record
 from rac_shim.audit.batch_writer import AccessLogBatchWriter
 from rac_shim.cold_start.decision import decide as cold_start_decide
 from rac_shim.proxy.forward import proxy_request
@@ -39,13 +38,10 @@ from rac_shim.proxy.wake_up import wake as wake_upstream
 from rac_shim.routing.decision import AppRoute, route_for_host
 from rac_shim.token.cookie import build_cookie_header, extract_session_jti
 from rac_shim.token.denylist_cache import RevokedTokenDenylistCache
-from rac_shim.token.errors import Expired, Revoked, TokenInvalid
+from rac_shim.token.errors import Revoked, TokenInvalid
 from rac_shim.token.kv_key_cache import KeyVaultPublicKeyCache
 from rac_shim.token.validation import decode_unverified_header, verify_signature_and_claims
 from rac_shim.ui.render import ErrorContext, InterstitialContext, render_error, render_interstitial
-
-if TYPE_CHECKING:
-    pass
 
 log: structlog.BoundLogger = structlog.get_logger(__name__)
 
@@ -65,7 +61,7 @@ def _strip_rac_token(url: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Helper: extract source IP (X-Forwarded-For or client host)
+# Helper: extract source IP
 # ---------------------------------------------------------------------------
 
 
@@ -84,9 +80,9 @@ def _source_ip(request: Request) -> str:
 
 
 class _Deps:
-    """Mutable container for all shared state; injected via request.state."""
+    """Mutable container for all shared state; injected via app.state."""
 
-    pg_pool: asyncpg.Pool  # type: ignore[type-arg]
+    pg_pool: asyncpg.Pool  # asyncpg generic Pool
     kv_key_cache: KeyVaultPublicKeyCache
     denylist_cache: RevokedTokenDenylistCache
     batch_writer: AccessLogBatchWriter
@@ -109,7 +105,7 @@ async def _wake_endpoint(request: Request) -> Response:
     return Response(content=b"", status_code=204)
 
 
-async def _handle(request: Request) -> Response:
+async def _handle(request: Request) -> Response:  # noqa: PLR0911, PLR0912
     """Main catch-all handler."""
     deps: _Deps = request.app.state.deps
     settings = deps.settings
@@ -146,7 +142,7 @@ async def _handle(request: Request) -> Response:
     )
 
     hmac_secret = settings.cookie_hmac_secret.get_secret_value().encode()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # ------------------------------------------------------------------
     # Public mode — no token check
@@ -173,7 +169,7 @@ async def _handle(request: Request) -> Response:
                 wake_upstream(route.upstream_host, client=deps.httpx_client),
                 name=f"wake_{route.slug}",
             )
-            ctx = InterstitialContext(
+            ictx = InterstitialContext(
                 institution_name=settings.institution_name,
                 brand_logo_url=settings.brand_logo_url,
                 access_mode="public",
@@ -189,7 +185,7 @@ async def _handle(request: Request) -> Response:
                 now=now,
             )
             return HTMLResponse(
-                render_interstitial(ctx).decode(),
+                render_interstitial(ictx).decode(),
                 status_code=200,
                 headers={"X-Correlation-Id": correlation_id},
             )
@@ -212,12 +208,12 @@ async def _handle(request: Request) -> Response:
     query_token = request.query_params.get("rac_token")
     cookie_value = request.cookies.get("rac_session")
     cookie_jti = extract_session_jti(cookie_value, hmac_secret=hmac_secret, now=now)
+    token_jti: uuid.UUID | None = None
 
     if query_token:
         # First-use path: validate token, set cookie, redirect to clean URL.
         try:
-            header = decode_unverified_header(query_token)
-            kid = str(header.get("kid", ""))
+            _header = decode_unverified_header(query_token)
             key_name = f"rac-app-{route.slug}-v1"
             public_key = await deps.kv_key_cache.get_jwk(key_name)
             claims = verify_signature_and_claims(
@@ -249,7 +245,7 @@ async def _handle(request: Request) -> Response:
                 request_info=request_info,
                 route=route,
                 token_jti=claims.jti,
-                upstream_status=None,  # no upstream hit on redirect
+                upstream_status=None,
                 latency_ms=0,
                 now=now,
             )
@@ -282,7 +278,7 @@ async def _handle(request: Request) -> Response:
     elif cookie_jti:
         # Subsequent requests via cookie.
         if await deps.denylist_cache.check(cookie_jti):
-            exc = Revoked("jti in denylist")
+            revoked_exc = Revoked("jti in denylist")
             _append_record(
                 deps,
                 request_info=request_info,
@@ -292,15 +288,13 @@ async def _handle(request: Request) -> Response:
                 latency_ms=0,
                 now=now,
             )
-            return _error_response(exc, settings, correlation_id)
+            return _error_response(revoked_exc, settings, correlation_id)
         # Valid cookie — proceed to proxy
         token_jti = cookie_jti
 
     else:
         # No token, no valid cookie.
-        from rac_shim.token.errors import Malformed
 
-        exc = Malformed("no token or cookie")
         _append_record(
             deps,
             request_info=request_info,
@@ -310,7 +304,7 @@ async def _handle(request: Request) -> Response:
             latency_ms=0,
             now=now,
         )
-        ctx = ErrorContext(
+        ectx = ErrorContext(
             institution_name=settings.institution_name,
             brand_logo_url=settings.brand_logo_url,
             researcher_contact_email=None,
@@ -318,7 +312,7 @@ async def _handle(request: Request) -> Response:
             correlation_id=correlation_id,
         )
         return HTMLResponse(
-            render_error("no_token", ctx).decode(),
+            render_error("no_token", ectx).decode(),
             status_code=403,
             headers={"X-Correlation-Id": correlation_id},
         )
@@ -330,8 +324,8 @@ async def _handle(request: Request) -> Response:
     upstream_resp = await proxy_request(
         request,
         upstream_host=route.upstream_host,
-        reviewer_label=str(token_jti),
-        reviewer_jti=str(token_jti),
+        reviewer_label=str(token_jti) if token_jti else None,
+        reviewer_jti=str(token_jti) if token_jti else None,
         app_slug=route.slug,
         client=deps.httpx_client,
     )
@@ -348,7 +342,7 @@ async def _handle(request: Request) -> Response:
             wake_upstream(route.upstream_host, client=deps.httpx_client),
             name=f"wake_{route.slug}",
         )
-        ctx = InterstitialContext(
+        ictx = InterstitialContext(
             institution_name=settings.institution_name,
             brand_logo_url=settings.brand_logo_url,
             access_mode="token_required",
@@ -364,12 +358,12 @@ async def _handle(request: Request) -> Response:
             now=now,
         )
         return HTMLResponse(
-            render_interstitial(ctx).decode(),
+            render_interstitial(ictx).decode(),
             status_code=200,
             headers={"X-Correlation-Id": correlation_id},
         )
 
-    await _append_record(
+    _append_record(
         deps,
         request_info=request_info,
         route=route,
@@ -389,7 +383,7 @@ async def _handle(request: Request) -> Response:
 
 def _error_response(exc: TokenInvalid, settings: Any, correlation_id: str) -> HTMLResponse:
     """Map a TokenInvalid exception to an HTML error response (AC7.4)."""
-    ctx = ErrorContext(
+    ectx = ErrorContext(
         institution_name=settings.institution_name,
         brand_logo_url=settings.brand_logo_url,
         researcher_contact_email=None,
@@ -398,17 +392,17 @@ def _error_response(exc: TokenInvalid, settings: Any, correlation_id: str) -> HT
     )
     code = exc.code
     if code == "expired":
-        error_code = "expired"
+        error_code: str = "expired"
     elif code == "revoked":
         error_code = "revoked"
     else:
-        # All other codes (wrong_audience, wrong_issuer, signature_invalid,
-        # malformed, not_yet_valid) → generic page (AC7.4)
+        # All other codes map to generic page (AC7.4)
         error_code = "generic"
 
-    html = render_error(error_code, ctx)  # type: ignore[arg-type]
+
+    rendered = render_error(error_code, ectx)  # type: ignore[arg-type]
     return HTMLResponse(
-        html.decode(),
+        rendered.decode(),
         status_code=403,
         headers={"X-Correlation-Id": correlation_id},
     )
@@ -419,7 +413,7 @@ def _append_record(
     *,
     request_info: RequestInfo,
     route: AppRoute,
-    token_jti: Any,
+    token_jti: uuid.UUID | None,
     upstream_status: int | None,
     latency_ms: int,
     now: datetime,
@@ -427,7 +421,7 @@ def _append_record(
     record = build_record(
         request_info=request_info,
         app_id=route.app_id,
-        submission_id=None,  # will be wired from registry in a later phase
+        submission_id=None,
         access_mode=route.access_mode,
         token_jti=token_jti,
         upstream_status=upstream_status,
@@ -449,27 +443,28 @@ def create_app(deps: _Deps | None = None) -> Starlette:
     If ``deps`` is provided, it is used directly (for testing).
     In production, the lifespan context manager builds deps from settings.
     """
-    # If deps provided at construction time, stash it for access in handlers
-    # even before lifespan fires (TestClient without context-manager usage).
     _injected_deps = deps
 
     @asynccontextmanager
-    async def lifespan(app: Starlette):  # type: ignore[type-arg]
+    async def lifespan(app: Starlette) -> Any:
         if _injected_deps is not None:
             app.state.deps = _injected_deps
             yield
             return
 
-        from rac_shim.settings import get_settings
-        from rac_shim.logging_setup import configure_logging
+        from rac_shim.logging_setup import configure_logging  # noqa: PLC0415
+        from rac_shim.settings import get_settings  # noqa: PLC0415
 
         settings = get_settings()
         configure_logging()
 
         pool = await asyncpg.create_pool(settings.database_dsn, min_size=2, max_size=10)
-        assert pool is not None
+        if pool is None:
+            raise RuntimeError("asyncpg.create_pool returned None")
 
-        from azure.identity.aio import ManagedIdentityCredential  # type: ignore[import-untyped]
+        from azure.identity.aio import (
+            ManagedIdentityCredential,  # noqa: PLC0415  # type: ignore[import-untyped]
+        )
 
         credential = ManagedIdentityCredential()
         kv_cache = KeyVaultPublicKeyCache(settings.kv_uri, credential)
@@ -485,7 +480,7 @@ def create_app(deps: _Deps | None = None) -> Starlette:
             aca_internal_suffix=settings.aca_internal_suffix,
             refresh_interval_seconds=settings.app_registry_refresh_interval_seconds,
         )
-        client = httpx.AsyncClient(timeout=settings.wake_budget_seconds)
+        client = httpx.AsyncClient(timeout=float(settings.wake_budget_seconds))
 
         await writer.start()
         await registry.start()
@@ -513,13 +508,21 @@ def create_app(deps: _Deps | None = None) -> Starlette:
     routes = [
         Route("/_shim/health", _health),
         Route("/_rac/wake", _wake_endpoint),
-        Route("/{path:path}", _handle, methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]),
-        Route("/", _handle, methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]),
+        Route(
+            "/{path:path}",
+            _handle,
+            methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+        ),
+        Route(
+            "/",
+            _handle,
+            methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+        ),
     ]
 
     starlette_app = Starlette(routes=routes, lifespan=lifespan)
     # For test injection: set state directly so handlers can access deps
-    # even without a lifespan context (e.g. TestClient without 'with').
+    # even without a lifespan context.
     if _injected_deps is not None:
         starlette_app.state.deps = _injected_deps
     return starlette_app

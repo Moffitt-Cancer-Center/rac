@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import html
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from string import Template
 from typing import Literal
@@ -35,7 +35,7 @@ class InterstitialContext:
     wake_path: str = "/_rac/wake"
 
 
-@lru_cache(maxsize=None)
+@cache
 def _load_template(name: str) -> str:
     """Load a template from disk. Result is cached indefinitely (server lifetime)."""
     return (TEMPLATES_DIR / f"{name}.html").read_text(encoding="utf-8")
