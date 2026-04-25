@@ -118,11 +118,18 @@ resource customDomain 'Microsoft.Cdn/profiles/customDomains@2023-05-01' = if (de
   }
 }
 
-// WAF Policy
+// WAF Policy. The sku.name MUST match the targeting Front Door profile's
+// tier — frontDoorProfile above is Premium_AzureFrontDoor, so this must
+// be the Premium WAF SKU. Without explicit sku, the policy defaults to
+// Classic which Azure rejects on association with a Premium profile
+// (errors as "Policy ArmResourceId has incorrect formatting").
 resource wafPolicy 'Microsoft.Network/FrontDoorWebApplicationFirewallPolicies@2022-05-01' = {
   name: 'waf-rac-${racEnv}'
   location: 'global'
   tags: tags
+  sku: {
+    name: 'Premium_AzureFrontDoor'
+  }
   properties: {
     policySettings: {
       enabledState: 'Enabled'
