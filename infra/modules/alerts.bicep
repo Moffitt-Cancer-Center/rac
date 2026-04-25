@@ -227,8 +227,11 @@ resource alertKeyVaultAccessDenied 'Microsoft.Insights/metricAlerts@2018-03-01' 
 }
 
 // Alert: Pipeline workflow stuck (Log Analytics scheduled query)
-// Alert triggers when no terminal verdict callback observed within 2x pipeline timeout
-resource alertPipelineStuck 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+// Alert triggers when no terminal verdict callback observed within 2x pipeline timeout.
+// Gated behind controlPlaneAppId because the custom table RAC_PipelineLog_CL is
+// created by control-plane pipeline ingestion — it doesn't exist on first deploy
+// and the alert's KQL fails with "Failed to resolve table" until then.
+resource alertPipelineStuck 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (!empty(controlPlaneAppId)) {
   name: 'alert-pipeline-stuck-${racEnv}'
   location: location
   tags: tags
