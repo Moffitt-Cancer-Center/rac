@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "315159365014608025"
+      "templateHash": "7535239347163642230"
     }
   },
   "functions": [
@@ -141,6 +141,15 @@
       "type": "int",
       "metadata": {
         "description": "Postgres sizing: backup retention days"
+      }
+    },
+    "pgExtensions": {
+      "type": "array",
+      "defaultValue": [
+        "pg_uuidv7"
+      ],
+      "metadata": {
+        "description": "Postgres extensions to enable via azure.extensions. Defaults to [pg_uuidv7] but envs in regions where pg_uuidv7 is not on the allowlist (some demo subs, some regions) should override to [uuid-ossp]. See docs/runbooks/bootstrap.md section 8."
       }
     },
     "acaZoneRedundant": {
@@ -1217,9 +1226,7 @@
             "value": "[reference('network').outputs.vnetId.value]"
           },
           "extensions": {
-            "value": [
-              "pg_uuidv7"
-            ]
+            "value": "[parameters('pgExtensions')]"
           },
           "geoRedundantBackup": "[if(equals(parameters('racEnv'), 'dev'), createObject('value', 'Disabled'), createObject('value', 'Enabled'))]",
           "tags": {
@@ -2058,7 +2065,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "1120128675779424173"
+              "templateHash": "6147900173173532157"
             }
           },
           "parameters": {
@@ -2255,7 +2262,6 @@
                       "sslCertificate": {
                         "id": "[format('{0}/sslCertificates/appGatewaySslCert', variables('appGwId'))]"
                       },
-                      "hostName": "[format('*.{0}', parameters('parentDomain'))]",
                       "hostNames": [
                         "[format('*.{0}', parameters('parentDomain'))]"
                       ],

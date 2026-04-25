@@ -60,6 +60,9 @@ param pgHaMode string
 @description('Postgres sizing: backup retention days')
 param pgBackupRetentionDays int
 
+@description('Postgres extensions to enable via azure.extensions. Defaults to [pg_uuidv7] but envs in regions where pg_uuidv7 is not on the allowlist (some demo subs, some regions) should override to [uuid-ossp]. See docs/runbooks/bootstrap.md section 8.')
+param pgExtensions array = ['pg_uuidv7']
+
 @description('ACA environment: zone redundancy (dev: false, staging/prod: true)')
 param acaZoneRedundant bool
 
@@ -203,7 +206,7 @@ module postgres 'modules/postgres.bicep' = {
     backupRetentionDays: pgBackupRetentionDays
     peSubnetId: network.outputs.peSubnetId
     vnetId: network.outputs.vnetId
-    extensions: ['pg_uuidv7']
+    extensions: pgExtensions
     geoRedundantBackup: (racEnv == 'dev') ? 'Disabled' : 'Enabled'
     tags: commonTags
   }

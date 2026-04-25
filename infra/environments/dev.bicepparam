@@ -11,6 +11,12 @@ param idpTenantId = 'f64ec93a-c5a6-4ba3-afca-8b10d684f3c1'
 // acrName, storageAccountName, pgServerName intentionally unset — they default
 // to subscription-scoped hashes in main.bicep. Override only if a specific
 // name is required for institutional reasons.
+
+// pg_uuidv7 is NOT in the azure.extensions allowlist for eastus2 (varies by
+// region + PG version). Fall back to uuid-ossp, which is always available.
+// Migration code that uses uuid_generate_v7() must be updated to
+// uuid_generate_v4() — see docs/runbooks/bootstrap.md section 8.
+param pgExtensions = ['uuid-ossp']
 param pgAdminPassword = readEnvironmentVariable('RAC_PG_ADMIN_PASSWORD')
 param appGwTlsCertKvSecretId = readEnvironmentVariable('RAC_APPGW_TLS_CERT_KV_SECRET_ID')
 param controlPlaneIdentityPrincipalId = ''

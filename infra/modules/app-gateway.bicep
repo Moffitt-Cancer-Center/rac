@@ -167,7 +167,9 @@ resource appGateway 'Microsoft.Network/applicationGateways@2023-11-01' = {
           sslCertificate: {
             id: '${appGwId}/sslCertificates/appGatewaySslCert'
           }
-          hostName: '*.${parentDomain}'
+          // Use hostNames (the array form) only — Azure rejects when both
+          // hostName and hostNames are set. The array supports SNI-multi-hostname
+          // listeners later if needed.
           hostNames: [
             '*.${parentDomain}'
           ]
