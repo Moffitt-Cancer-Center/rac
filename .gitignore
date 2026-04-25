@@ -213,3 +213,7 @@ node_modules/
 *.bicep.deployment.json
 .worktrees/
 .claude/
+
+# AWS CLI install scratch — installed system-wide at /usr/local/bin/aws
+aws/
+awscliv2.zip
