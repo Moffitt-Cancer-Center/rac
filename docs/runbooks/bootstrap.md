@@ -538,6 +538,42 @@ The `whatif-dev` job should report zero changes. If resources appear to be recre
 - Phase 1 sets purge protection to true for prod only; dev allows purge.
 - To manually clean up dev for testing, update `kvEnablePurgeProtection=false` in `dev.bicepparam`, redeploy, then delete.
 
+## Common deploy gotchas
+
+These are bugs that surfaced during the first end-to-end deploy and will surface again on any deploy in a fresh subscription/region. Run `scripts/infra-validate.sh dev` before pushing — it catches most of them at compile/validate time without burning a 25-min teardown cycle.
+
+**Region offer restrictions on personal/trial subscriptions.**
+- `Microsoft.DBforPostgreSQL` is offer-restricted in `eastus` for personal/trial subs. Use `eastus2` or request a quota increase. Probe via `az postgres flexible-server list-skus --location <region>` (returns empty if restricted).
+- `pg_uuidv7` is **not** in the `azure.extensions` allowlist for some regions/PG versions (notably `eastus2`). Override `pgExtensions=['uuid-ossp']` in the env's bicepparam; update Phase 2's Alembic migration to use `uuid_generate_v4()` if you need a working app on the platform. Check the allowlist via `az postgres flexible-server parameter show --resource-group <rg> --server-name <pg> --name azure.extensions --query "allowedValues"`.
+
+**Soft-delete name reservations.**
+- Key Vault: 7–90 day reservation on names after deletion. Identical re-deploy in the same subscription/RG hits the same `uniqueString` hash and collides. `scripts/teardown.sh` purges KVs matching the env tag, but only for KVs that were created with that tag. Manually purge via `az keyvault purge --name <kv> --location <region>` if needed.
+- Storage Accounts: 30-day reservation; **no purge command exists**. Either wait or change the `racEnv`/`uniqueString` seed.
+- Postgres flexible servers: server names are global; the global namespace is densely populated. The `uniqueString`-based defaults in `main.bicep` produce stable names that collide on quick re-deploys after teardown. Wait or override the name.
+
+**Naming rule divergences across resource types.**
+- **Front Door WAF policies**: alphanumeric **only** (no hyphens). Use `wafrac${env}`, not `waf-rac-${env}`.
+- **App Gateway WAF policies**: hyphens **allowed**. Different resource type, different rules.
+- **Storage account names**: lowercase alphanumeric, **24 char max**. With `racEnv='staging'` and a 13-char hash, the default overflows — `main.bicep` uses `substring(uniqueString(...), 0, 10)` to fit.
+
+**Bicep gotchas that don't surface until ARM apply.**
+- `'''multi-line'''` strings do **not** support `${...}` interpolation — the literal text is preserved. Use a single-quoted string with `\n` line breaks for any KQL/JSON that needs param values substituted.
+- BCP318 warnings on conditional-module access (`module.outputs.X` where `module` is `if`-gated) **are real bugs** — use the safe-dereference operator `module.?outputs.X ?? defaultValue`. `scripts/infra-validate.sh` treats BCP warnings as errors.
+- `enablePurgeProtection: false` on `Microsoft.KeyVault/vaults` is **rejected** by Azure — the property accepts only `true` or omission. Use a ternary that emits `null` (which Bicep omits): `enablePurgeProtection: enablePurgeProtection ? true : null`.
+- App Gateway HTTPS listener: set **either** `hostName` **or** `hostNames`, not both.
+- Front Door WAF policy `sku.name` must match the targeting Front Door profile's tier (`Premium_AzureFrontDoor` for Premium profiles).
+- Front Door `Microsoft_DefaultRuleSet` 1.x supports a ruleset-wide `ruleSetAction`; 2.x requires per-rule actions. Easy to mix up.
+- `private endpoints + privateDnsZoneGroup` referencing a same-template `privateDnsZone`: declare the zone first, and add explicit `dependsOn: [privateDnsZone]` on the group. Otherwise ARM batches them in parallel and the group's `privateDnsZoneId` resolves to empty.
+- Storage account child resources (`blobServices`, `containers`, `managementPolicy`, private endpoint) race the parent under network-restricted ACLs; serialize via explicit `dependsOn` chains.
+
+**Cross-RG role assignments must live in their own module.**
+- The App Gateway MI needs Secrets/Certificates User on the **bootstrap KV** (different RG from platform). Wire this via a module scoped to `resourceGroup('rg-rac-bootstrap')`. See `infra/modules/bootstrap-kv-rbac.bicep`.
+
+**GitHub Actions OIDC + long Azure deploys.**
+- GitHub's OIDC assertion is valid for **5 minutes**. Sync `az deployment sub create` against a deploy that takes >50 min will fail with `AADSTS700024` when az CLI tries to refresh. The fix is `--no-wait` + a polling loop (each poll completes inside the AAD token's 1-hour lifetime) — already wired into `.github/workflows/infra-deploy.yml`.
+
+**First ACA environment in a fresh subscription takes 30–60 minutes** (Container Apps provisions an internal AKS fleet under the hood). Looks like a hang in the Portal. Subsequent deploys are fast. Plan accordingly on first stand-up.
+
 ## Next Steps
 
 1. Confirm all Tier 2 infrastructure is operational (Task 17 acceptance checks).
