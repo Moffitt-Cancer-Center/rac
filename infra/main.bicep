@@ -247,9 +247,26 @@ module dnsZone 'modules/dns-zone.bicep' = {
   }
 }
 
+// Cross-RG role assignment: grant the App Gateway MI access to the bootstrap
+// KV (where the TLS cert lives). MUST run before appGateway so the gateway
+// can read the cert at provisioning time.
+module bootstrapKvRbac 'modules/bootstrap-kv-rbac.bicep' = {
+  scope: resourceGroup('rg-rac-bootstrap')
+  name: 'deploy-bootstrap-kv-rbac'
+  params: {
+    appGwMiPrincipalId: managedIdentity.outputs.appGwMiPrincipalId
+  }
+}
+
 module appGateway 'modules/app-gateway.bicep' = {
   scope: rg
   name: 'deploy-appgw'
+  // Wait for the App Gateway MI to be granted KV access on both the platform
+  // KV (cert metadata) and the bootstrap KV (where the cert actually lives).
+  dependsOn: [
+    bootstrapKvRbac
+    roleAssignmentsKv
+  ]
   params: {
     location: location
     racEnv: racEnv
@@ -262,7 +279,10 @@ module appGateway 'modules/app-gateway.bicep' = {
     // as an output.  Pass it here so the backend pool targets the shim.
     // On first deploy (shimImageName empty) shimFqdn defaults to '' and the
     // placeholder address is preserved in app-gateway.bicep.
-    shimFqdn: !empty(shimImageName) ? shimAcaApp.outputs.shimFqdn : ''
+    // Null-safe access: shimAcaApp is a conditional module, so use the
+    // safe-dereference operator to avoid BCP318 ("module|null may be null at
+    // start of deploy"). When the module isn't deployed, fall back to ''.
+    shimFqdn: shimAcaApp.?outputs.shimFqdn ?? ''
     tags: commonTags
   }
 }
@@ -441,7 +461,7 @@ output shimMiPrincipalId string = managedIdentity.outputs.shimMiPrincipalId
 output eventHubNamespaceId string = eventHub.outputs.eventHubNamespaceId
 
 @description('Shim ACA app resource ID (empty when shimImageName was not provided on this deploy)')
-output shimAppId string = !empty(shimImageName) ? shimAcaApp.outputs.shimAppId : ''
+output shimAppId string = shimAcaApp.?outputs.shimAppId ?? ''
 
 @description('Shim ACA internal FQDN (empty when shimImageName was not provided on this deploy)')
-output shimFqdn string = !empty(shimImageName) ? shimAcaApp.outputs.shimFqdn : ''
+output shimFqdn string = shimAcaApp.?outputs.shimFqdn ?? ''

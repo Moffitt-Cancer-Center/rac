@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "16494876589695193689"
+      "templateHash": "1120128675779424173"
     }
   },
   "parameters": {
@@ -169,7 +169,7 @@
             "properties": {
               "backendAddresses": [
                 {
-                  "fqdn": "[if(empty(parameters('shimFqdn')), 'shim.internal.eastus.azurecontainerapps.io', parameters('shimFqdn'))]"
+                  "fqdn": "[if(empty(parameters('shimFqdn')), format('shim.internal.{0}.azurecontainerapps.io', parameters('location')), parameters('shimFqdn'))]"
                 }
               ]
             }

@@ -131,7 +131,10 @@ resource appGateway 'Microsoft.Network/applicationGateways@2023-11-01' = {
               // When shimFqdn is supplied (post-Phase-6 deploy), route to the shim's
               // ACA internal FQDN.  On first deploy (shimFqdn empty), the placeholder
               // is preserved so the gateway can be provisioned before the shim exists.
-              fqdn: empty(shimFqdn) ? 'shim.internal.eastus.azurecontainerapps.io' : shimFqdn
+              // Placeholder until the shim's real internal FQDN is available
+              // (post-Phase-6). Use ${location} so the placeholder follows the
+              // deploy region rather than being pinned to eastus.
+              fqdn: empty(shimFqdn) ? 'shim.internal.${location}.azurecontainerapps.io' : shimFqdn
             }
           ]
         }

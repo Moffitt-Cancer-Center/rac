@@ -39,6 +39,33 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
   }
 }
 
+// Order matters: declare DNS zone + VNet link BEFORE the private endpoint and
+// the privateDnsZoneGroup. ARM schedules independent resources in parallel
+// batches; if the privateDnsZoneGroup runs in the same batch as the zone, the
+// zone's resource ID can resolve to empty when the group consumes it,
+// producing "invalid private dns zone ids ." at deploy time. Matching the
+// layout of key-vault.bicep / blob-storage.bicep / postgres.bicep.
+
+resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  // TODO: For sovereign/gov clouds, this should be dynamically determined
+  name: 'privatelink.azurecr.io'
+  location: 'global'
+  tags: tags
+}
+
+resource privateDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  parent: privateDnsZone
+  name: 'vnet-link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: vnetId
+    }
+  }
+  tags: tags
+}
+
 resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
   name: 'pe-acr-${racEnv}'
   location: location
@@ -64,6 +91,10 @@ resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
 resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
   parent: privateEndpoint
   name: 'acr-zone-group'
+  // Belt-and-suspenders: explicit dependsOn so ARM cannot schedule the group
+  // before the zone exists, even though Bicep already infers the dependency
+  // via privateDnsZone.id.
+  dependsOn: [privateDnsZone]
   properties: {
     privateDnsZoneConfigs: [
       {
@@ -74,27 +105,6 @@ resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneG
       }
     ]
   }
-}
-
-resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
-  // TODO: For sovereign/gov clouds, this should be dynamically determined
-  name: 'privatelink.azurecr.io'
-  location: 'global'
-  tags: tags
-}
-
-// VNet link for private DNS zone
-resource privateDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
-  parent: privateDnsZone
-  name: 'vnet-link'
-  location: 'global'
-  properties: {
-    registrationEnabled: false
-    virtualNetwork: {
-      id: vnetId
-    }
-  }
-  tags: tags
 }
 
 @description('Container Registry resource ID')

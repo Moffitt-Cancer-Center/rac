@@ -10,6 +10,9 @@ param logAnalyticsWorkspaceId string
 @description('Resource tags applied to all resources')
 param tags object
 
+@description('Whether to provision Log Analytics → Event Hub data exports. Defaults to false because (a) the custom tables RAC_AccessLog_CL / RAC_ApprovalEvent_CL do not exist on first deploy until ingestion creates them, and (b) the dataExports feature is gated at subscription level on some personal/trial subs. Flip to true after first ingestion has populated the custom tables.')
+param deployDataExports bool = false
+
 // Event Hub Namespace
 resource eventHubNamespace 'Microsoft.EventHub/namespaces@2024-01-01' = {
   name: 'evhns-rac-${racEnv}'
@@ -64,7 +67,7 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existin
 }
 
 // Data Export: Forward access logs to event hub
-resource accessLogsDataExport 'Microsoft.OperationalInsights/workspaces/dataExports@2020-08-01' = {
+resource accessLogsDataExport 'Microsoft.OperationalInsights/workspaces/dataExports@2020-08-01' = if (deployDataExports) {
   parent: workspace
   name: 'dataexport-accesslogs-${racEnv}'
   properties: {
@@ -82,7 +85,7 @@ resource accessLogsDataExport 'Microsoft.OperationalInsights/workspaces/dataExpo
 }
 
 // Data Export: Forward approval events to event hub
-resource approvalEventsDataExport 'Microsoft.OperationalInsights/workspaces/dataExports@2020-08-01' = {
+resource approvalEventsDataExport 'Microsoft.OperationalInsights/workspaces/dataExports@2020-08-01' = if (deployDataExports) {
   parent: workspace
   name: 'dataexport-approval-${racEnv}'
   properties: {

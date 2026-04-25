@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "2231735750529503630"
+      "templateHash": "2796382091929297904"
     }
   },
   "parameters": {
@@ -31,6 +31,13 @@
       "type": "object",
       "metadata": {
         "description": "Resource tags applied to all resources"
+      }
+    },
+    "deployDataExports": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Whether to provision Log Analytics → Event Hub data exports. Defaults to false because (a) the custom tables RAC_AccessLog_CL / RAC_ApprovalEvent_CL do not exist on first deploy until ingestion creates them, and (b) the dataExports feature is gated at subscription level on some personal/trial subs. Flip to true after first ingestion has populated the custom tables."
       }
     }
   },
@@ -90,6 +97,7 @@
       ]
     },
     {
+      "condition": "[parameters('deployDataExports')]",
       "type": "Microsoft.OperationalInsights/workspaces/dataExports",
       "apiVersion": "2020-08-01",
       "name": "[format('{0}/{1}', last(split(parameters('logAnalyticsWorkspaceId'), '/')), format('dataexport-accesslogs-{0}', parameters('racEnv')))]",
@@ -111,6 +119,7 @@
       ]
     },
     {
+      "condition": "[parameters('deployDataExports')]",
       "type": "Microsoft.OperationalInsights/workspaces/dataExports",
       "apiVersion": "2020-08-01",
       "name": "[format('{0}/{1}', last(split(parameters('logAnalyticsWorkspaceId'), '/')), format('dataexport-approval-{0}', parameters('racEnv')))]",

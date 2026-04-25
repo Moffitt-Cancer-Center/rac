@@ -23,9 +23,14 @@ param kvResourceId string = ''
 // Scoped to platform RG where Key Vault is deployed
 // Grants crypto permissions to managed identities
 
-// Reference the existing Key Vault using its resource ID
+// Reference the existing Key Vault using its resource ID. The `if` guard
+// short-circuits at deploy time, but Bicep still validates the `name` field
+// at parse time — so when kvResourceId is empty (Tier 3 invocation),
+// `last(split(...))` would yield '' and fail the 3-24 char vault-name
+// constraint. Fall back to a syntactically-valid placeholder that's never
+// looked up because the existing resource is short-circuited.
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' existing = if (!empty(kvResourceId)) {
-  name: last(split(kvResourceId, '/'))
+  name: !empty(kvResourceId) ? last(split(kvResourceId, '/')) : 'placeholder-kv'
 }
 
 // Key Vault Crypto Officer role for Control Plane MI

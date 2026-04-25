@@ -16,6 +16,9 @@ param privateLinkLocation string = ''
 @description('Resource tags')
 param tags object
 
+@description('Whether to attach the wildcard custom domain. Defaults to false because Front Door ManagedCertificate does not support wildcard hostnames, and CustomerCertificate setup requires KV access wired up via the FD profile MI. Set true after DNS delegation + a real cert + role assignments are in place (pass 2).')
+param deployCustomDomain bool = false
+
 // Front Door Premium profile
 resource frontDoorProfile 'Microsoft.Cdn/profiles@2023-05-01' = {
   name: 'afd-rac-${racEnv}'
@@ -91,16 +94,19 @@ resource route 'Microsoft.Cdn/profiles/afdEndpoints/routes@2023-05-01' = {
     linkToDefaultDomain: 'Enabled'
     httpsRedirect: 'Enabled'
     enabledState: 'Enabled'
-    customDomains: [
+    customDomains: deployCustomDomain ? [
       {
         id: customDomain.id
       }
-    ]
+    ] : []
   }
 }
 
-// Custom domain for wildcard
-resource customDomain 'Microsoft.Cdn/profiles/customDomains@2023-05-01' = {
+// Custom domain for wildcard. Gated behind deployCustomDomain because Front
+// Door's ManagedCertificate does not support wildcard hostnames; the
+// pass-2 path is to flip this on once a real CustomerCertificate-backed
+// cert is referenced (or once individual subdomains replace the wildcard).
+resource customDomain 'Microsoft.Cdn/profiles/customDomains@2023-05-01' = if (deployCustomDomain) {
   name: 'domain-wildcard-${racEnv}'
   parent: frontDoorProfile
   properties: {

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "12271495176127261153"
+      "templateHash": "4129510598027346719"
     }
   },
   "parameters": {
@@ -45,6 +45,13 @@
       "type": "object",
       "metadata": {
         "description": "Resource tags"
+      }
+    },
+    "deployCustomDomain": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Whether to attach the wildcard custom domain. Defaults to false because Front Door ManagedCertificate does not support wildcard hostnames, and CustomerCertificate setup requires KV access wired up via the FD profile MI. Set true after DNS delegation + a real cert + role assignments are in place (pass 2)."
       }
     }
   },
@@ -124,11 +131,7 @@
         "linkToDefaultDomain": "Enabled",
         "httpsRedirect": "Enabled",
         "enabledState": "Enabled",
-        "customDomains": [
-          {
-            "id": "[resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv')))]"
-          }
-        ]
+        "customDomains": "[if(parameters('deployCustomDomain'), createArray(createObject('id', resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv'))))), createArray())]"
       },
       "dependsOn": [
         "[resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv')))]",
@@ -137,6 +140,7 @@
       ]
     },
     {
+      "condition": "[parameters('deployCustomDomain')]",
       "type": "Microsoft.Cdn/profiles/customDomains",
       "apiVersion": "2023-05-01",
       "name": "[format('{0}/{1}', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv')))]",

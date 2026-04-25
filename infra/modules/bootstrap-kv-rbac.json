@@ -1,0 +1,68 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "4358568595503063420"
+    }
+  },
+  "parameters": {
+    "bootstrapKvName": {
+      "type": "string",
+      "defaultValue": "kv-rac-bootstrap-001",
+      "metadata": {
+        "description": "Bootstrap Key Vault name (defaults to kv-rac-bootstrap-001 — the demo-bootstrap convention)"
+      }
+    },
+    "appGwMiPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "App Gateway managed identity principal ID"
+      }
+    }
+  },
+  "variables": {
+    "roleIds": {
+      "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
+      "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
+      "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+      "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
+      "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
+      "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+      "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12"
+    }
+  },
+  "resources": {
+    "bootstrapKv": {
+      "existing": true,
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2023-07-01",
+      "name": "[parameters('bootstrapKvName')]"
+    },
+    "secretsUserForAppGw": {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('bootstrapKvName'))]",
+      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('bootstrapKvName')), parameters('appGwMiPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsUser)]",
+        "principalId": "[parameters('appGwMiPrincipalId')]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    "certificatesUserForAppGw": {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('bootstrapKvName'))]",
+      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('bootstrapKvName')), parameters('appGwMiPrincipalId'), variables('roleIds').keyVaultCertificatesUser)]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultCertificatesUser)]",
+        "principalId": "[parameters('appGwMiPrincipalId')]",
+        "principalType": "ServicePrincipal"
+      }
+    }
+  }
+}

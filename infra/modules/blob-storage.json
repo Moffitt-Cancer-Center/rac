@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "17585045916007464544"
+      "templateHash": "15053082759552455154"
     }
   },
   "parameters": {
@@ -100,7 +100,8 @@
       "apiVersion": "2023-05-01",
       "name": "[format('{0}/{1}/{2}', parameters('storageAccountName'), 'default', 'scan-artifacts')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]"
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]",
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', parameters('storageAccountName'), 'default', 'researcher-uploads')]"
       ]
     },
     {
@@ -108,7 +109,8 @@
       "apiVersion": "2023-05-01",
       "name": "[format('{0}/{1}/{2}', parameters('storageAccountName'), 'default', 'sboms')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]"
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]",
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', parameters('storageAccountName'), 'default', 'scan-artifacts')]"
       ]
     },
     {
@@ -116,7 +118,8 @@
       "apiVersion": "2023-05-01",
       "name": "[format('{0}/{1}/{2}', parameters('storageAccountName'), 'default', 'cost-exports')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]"
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]",
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', parameters('storageAccountName'), 'default', 'sboms')]"
       ]
     },
     {
@@ -124,7 +127,8 @@
       "apiVersion": "2023-05-01",
       "name": "[format('{0}/{1}/{2}', parameters('storageAccountName'), 'default', 'build-logs')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]"
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]",
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', parameters('storageAccountName'), 'default', 'cost-exports')]"
       ]
     },
     {
@@ -235,6 +239,7 @@
         }
       },
       "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', parameters('storageAccountName'), 'default', 'build-logs')]",
         "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
       ]
     },
@@ -283,6 +288,7 @@
         ]
       },
       "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/managementPolicies', parameters('storageAccountName'), 'default')]",
         "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
       ]
     },

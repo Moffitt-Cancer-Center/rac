@@ -36,10 +36,17 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
 }
 
-// Blob services resource (required for container and policy children)
+// Bicep auto-derives `dependsOn: [storageAccount]` for child resources via
+// `parent:`, but we add explicit dependsOn anywhere children share a parent
+// to serialize ARM's batched parallel scheduling. The observed
+// `ResourceNotFound` failures on first deploy come from a race where ARM
+// reads the storage account from a sibling control-plane endpoint before
+// it's fully populated.
+
 resource blobServices 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
   parent: storageAccount
   name: 'default'
+  dependsOn: [storageAccount]
   properties: {
     deleteRetentionPolicy: {
       enabled: true
@@ -52,36 +59,46 @@ resource blobServices 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01
   }
 }
 
-// Containers: researcher-uploads, scan-artifacts, sboms, cost-exports, build-logs
+// Containers: researcher-uploads, scan-artifacts, sboms, cost-exports, build-logs.
+// Containers share a parent (blobServices). ARM treats sibling-with-same-parent
+// resources as parallelizable — but Storage's container API serializes them
+// internally anyway, and explicit dependsOn chains avoid intermittent 409 races.
 resource containerResearcherUploads 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: blobServices
   name: 'researcher-uploads'
+  dependsOn: [blobServices]
 }
 
 resource containerScanArtifacts 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: blobServices
   name: 'scan-artifacts'
+  dependsOn: [containerResearcherUploads]
 }
 
 resource containerSboms 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: blobServices
   name: 'sboms'
+  dependsOn: [containerScanArtifacts]
 }
 
 resource containerCostExports 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: blobServices
   name: 'cost-exports'
+  dependsOn: [containerSboms]
 }
 
 resource containerBuildLogs 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: blobServices
   name: 'build-logs'
+  dependsOn: [containerCostExports]
 }
 
-// Management policy: lifecycle rules for tiering and deletion
+// Management policy depends on all containers existing — Storage rejects
+// lifecycle rules that filter on prefixes for which no container exists.
 resource managementPolicy 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
   parent: storageAccount
   name: 'default'
+  dependsOn: [containerBuildLogs]
   properties: {
     policy: {
       rules: [
@@ -207,11 +224,13 @@ resource privateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLin
   }
 }
 
-// Private endpoint for the blob subresource
+// Private endpoint for the blob subresource. Wait for managementPolicy so
+// the entire data-plane setup is done before locking down network access.
 resource blobPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
   name: 'pe-${storageAccountName}-blob'
   location: location
   tags: tags
+  dependsOn: [managementPolicy]
   properties: {
     subnet: {
       id: peSubnetId
@@ -230,10 +249,12 @@ resource blobPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
   }
 }
 
-// Private DNS Zone Group for Private Endpoint
+// Private DNS Zone Group for Private Endpoint. Explicit dependsOn so ARM
+// can't schedule the group before the zone (mirrors the A1 fix for ACR).
 resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
   parent: blobPrivateEndpoint
   name: 'blob-zone-group'
+  dependsOn: [privateDnsZone]
   properties: {
     privateDnsZoneConfigs: [
       {
