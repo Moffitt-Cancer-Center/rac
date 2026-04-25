@@ -203,12 +203,14 @@ resource alertKeyVaultAccessDenied 'Microsoft.Insights/metricAlerts@2018-03-01' 
           operator: 'GreaterThan'
           threshold: 0
           timeAggregation: 'Total'
+          // ServiceApiResult exposes ApiName/Activity/StatusCode/StatusCodeClass.
+          // ResultType is not a valid dimension; filter on HTTP 403 instead.
           dimensions: [
             {
-              name: 'ResultType'
+              name: 'StatusCode'
               operator: 'Include'
               values: [
-                'Forbidden'
+                '403'
               ]
             }
           ]
@@ -242,21 +244,11 @@ resource alertPipelineStuck 'Microsoft.Insights/scheduledQueryRules@2023-03-15-p
     criteria: {
       allOf: [
         {
-          query: '''
-          let window_start = ago(${2 * pipelineTimeoutMinutes}m);
-          let started = RAC_PipelineLog_CL
-            | where TimeGenerated between (window_start .. now())
-            | where event_type_s == "pipeline_started"
-            | project correlation_id_s, started_at = TimeGenerated;
-          let verdicts = RAC_PipelineLog_CL
-            | where TimeGenerated between (window_start .. now())
-            | where event_type_s == "pipeline_verdict"
-            | project correlation_id_s;
-          started
-          | where correlation_id_s !in (verdicts)
-          | where started_at < ago(${pipelineTimeoutMinutes}m)
-          | summarize stuck_count = count()
-          '''
+          // Bicep '''multi-line''' strings do NOT support string interpolation —
+          // ${...} is preserved literally and KQL fails to parse. Use a regular
+          // single-quoted string with \n line breaks so ${pipelineTimeoutMinutes}
+          // gets substituted at compile time.
+          query: 'let window_start = ago(${2 * pipelineTimeoutMinutes}m);\nlet started = RAC_PipelineLog_CL\n| where TimeGenerated between (window_start .. now())\n| where event_type_s == "pipeline_started"\n| project correlation_id_s, started_at = TimeGenerated;\nlet verdicts = RAC_PipelineLog_CL\n| where TimeGenerated between (window_start .. now())\n| where event_type_s == "pipeline_verdict"\n| project correlation_id_s;\nstarted\n| where correlation_id_s !in (verdicts)\n| where started_at < ago(${pipelineTimeoutMinutes}m)\n| summarize stuck_count = count()'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0

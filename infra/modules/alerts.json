@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "3108928223028088444"
+      "templateHash": "15242813050304148800"
     }
   },
   "parameters": {
@@ -254,10 +254,10 @@
               "timeAggregation": "Total",
               "dimensions": [
                 {
-                  "name": "ResultType",
+                  "name": "StatusCode",
                   "operator": "Include",
                   "values": [
-                    "Forbidden"
+                    "403"
                   ]
                 }
               ]
@@ -293,7 +293,7 @@
         "criteria": {
           "allOf": [
             {
-              "query": "          let window_start = ago(${2 * pipelineTimeoutMinutes}m);\n          let started = RAC_PipelineLog_CL\n            | where TimeGenerated between (window_start .. now())\n            | where event_type_s == \"pipeline_started\"\n            | project correlation_id_s, started_at = TimeGenerated;\n          let verdicts = RAC_PipelineLog_CL\n            | where TimeGenerated between (window_start .. now())\n            | where event_type_s == \"pipeline_verdict\"\n            | project correlation_id_s;\n          started\n          | where correlation_id_s !in (verdicts)\n          | where started_at < ago(${pipelineTimeoutMinutes}m)\n          | summarize stuck_count = count()\n          ",
+              "query": "[format('let window_start = ago({0}m);\nlet started = RAC_PipelineLog_CL\n| where TimeGenerated between (window_start .. now())\n| where event_type_s == \"pipeline_started\"\n| project correlation_id_s, started_at = TimeGenerated;\nlet verdicts = RAC_PipelineLog_CL\n| where TimeGenerated between (window_start .. now())\n| where event_type_s == \"pipeline_verdict\"\n| project correlation_id_s;\nstarted\n| where correlation_id_s !in (verdicts)\n| where started_at < ago({1}m)\n| summarize stuck_count = count()', mul(2, parameters('pipelineTimeoutMinutes')), parameters('pipelineTimeoutMinutes'))]",
               "timeAggregation": "Count",
               "operator": "GreaterThan",
               "threshold": 0,
