@@ -139,10 +139,16 @@ resource wafPolicy 'Microsoft.Network/FrontDoorWebApplicationFirewallPolicies@20
       mode: 'Prevention'
     }
     managedRules: {
+      // Microsoft_DefaultRuleSet 2.x uses per-rule actions (no ruleset-wide
+      // default), and Azure rejects the policy if an unsupported default is
+      // implied. 1.1 is the OWASP-based ruleset with a clear ruleset-level
+      // Block action and is widely supported. Bump back to 2.x once we have
+      // explicit per-rule actions configured.
       managedRuleSets: [
         {
           ruleSetType: 'Microsoft_DefaultRuleSet'
-          ruleSetVersion: '2.1'
+          ruleSetVersion: '1.1'
+          ruleSetAction: 'Block'
         }
       ]
     }
