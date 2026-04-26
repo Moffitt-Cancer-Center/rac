@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
   "contentVersion": "1.0.0.0",
   "metadata": {
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "9320783918178111892"
+      "templateHash": "2749130694863053286"
     }
   },
   "parameters": {
@@ -39,6 +40,20 @@
         "description": "VNet resource ID for private DNS zone linking"
       }
     },
+    "controlPlaneMiPrincipalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Control Plane managed identity principal ID — granted AcrPull on this registry. Empty disables the assignment."
+      }
+    },
+    "shimMiPrincipalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Shim managed identity principal ID — granted AcrPull on this registry. Empty disables the assignment."
+      }
+    },
     "tags": {
       "type": "object",
       "metadata": {
@@ -47,10 +62,20 @@
     }
   },
   "variables": {
-    "acrNameNormalized": "[toLower(parameters('acrName'))]"
+    "acrNameNormalized": "[toLower(parameters('acrName'))]",
+    "roleIds": {
+      "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
+      "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
+      "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+      "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
+      "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
+      "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+      "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
+      "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+    }
   },
-  "resources": [
-    {
+  "resources": {
+    "acr": {
       "type": "Microsoft.ContainerRegistry/registries",
       "apiVersion": "2023-11-01-preview",
       "name": "[variables('acrNameNormalized')]",
@@ -67,19 +92,19 @@
         "publicNetworkAccess": "Disabled",
         "policies": {
           "quarantinePolicy": {
-            "status": "enabled"
+            "status": "disabled"
           }
         }
       }
     },
-    {
+    "privateDnsZone": {
       "type": "Microsoft.Network/privateDnsZones",
       "apiVersion": "2020-06-01",
       "name": "privatelink.azurecr.io",
       "location": "global",
       "tags": "[parameters('tags')]"
     },
-    {
+    "privateDnsZoneVnetLink": {
       "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
       "apiVersion": "2020-06-01",
       "name": "[format('{0}/{1}', 'privatelink.azurecr.io', 'vnet-link')]",
@@ -92,10 +117,10 @@
       },
       "tags": "[parameters('tags')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.azurecr.io')]"
+        "privateDnsZone"
       ]
     },
-    {
+    "privateEndpoint": {
       "type": "Microsoft.Network/privateEndpoints",
       "apiVersion": "2023-11-01",
       "name": "[format('pe-acr-{0}', parameters('racEnv'))]",
@@ -118,10 +143,10 @@
         ]
       },
       "dependsOn": [
-        "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized'))]"
+        "acr"
       ]
     },
-    {
+    "privateDnsZoneGroup": {
       "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
       "apiVersion": "2023-11-01",
       "name": "[format('{0}/{1}', format('pe-acr-{0}', parameters('racEnv')), 'acr-zone-group')]",
@@ -136,11 +161,41 @@
         ]
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.azurecr.io')]",
-        "[resourceId('Microsoft.Network/privateEndpoints', format('pe-acr-{0}', parameters('racEnv')))]"
+        "privateDnsZone",
+        "privateEndpoint"
+      ]
+    },
+    "acrPullForControlPlane": {
+      "condition": "[not(empty(parameters('controlPlaneMiPrincipalId')))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized'))]",
+      "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized')), parameters('controlPlaneMiPrincipalId'), variables('roleIds').acrPull)]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').acrPull)]",
+        "principalId": "[parameters('controlPlaneMiPrincipalId')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "acr"
+      ]
+    },
+    "acrPullForShim": {
+      "condition": "[not(empty(parameters('shimMiPrincipalId')))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized'))]",
+      "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized')), parameters('shimMiPrincipalId'), variables('roleIds').acrPull)]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').acrPull)]",
+        "principalId": "[parameters('shimMiPrincipalId')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "acr"
       ]
     }
-  ],
+  },
   "outputs": {
     "acrId": {
       "type": "string",
@@ -154,7 +209,7 @@
       "metadata": {
         "description": "Container Registry login server FQDN"
       },
-      "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrNameNormalized')), '2023-11-01-preview').loginServer]"
+      "value": "[reference('acr').loginServer]"
     },
     "acrResourceId": {
       "type": "string",

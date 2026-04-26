@@ -13,8 +13,16 @@ param peSubnetId string
 @description('VNet resource ID for private DNS zone linking')
 param vnetId string
 
+@description('Control Plane managed identity principal ID — granted AcrPull on this registry. Empty disables the assignment.')
+param controlPlaneMiPrincipalId string = ''
+
+@description('Shim managed identity principal ID — granted AcrPull on this registry. Empty disables the assignment.')
+param shimMiPrincipalId string = ''
+
 @description('Resource tags applied to all resources')
 param tags object
+
+import { roleIds } from './role-ids.bicep'
 
 var acrNameNormalized = toLower(acrName)
 
@@ -111,6 +119,30 @@ resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneG
         }
       }
     ]
+  }
+}
+
+// AcrPull role assignments for the platform MIs that pull images. ACA's
+// `registries[].identity` config tells ACA to use the named MI when
+// pulling, but the MI still needs an explicit AcrPull grant on this
+// registry for the pull to succeed.
+resource acrPullForControlPlane 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(controlPlaneMiPrincipalId)) {
+  scope: acr
+  name: guid(acr.id, controlPlaneMiPrincipalId, roleIds.acrPull)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.acrPull)
+    principalId: controlPlaneMiPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource acrPullForShim 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(shimMiPrincipalId)) {
+  scope: acr
+  name: guid(acr.id, shimMiPrincipalId, roleIds.acrPull)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.acrPull)
+    principalId: shimMiPrincipalId
+    principalType: 'ServicePrincipal'
   }
 }
 

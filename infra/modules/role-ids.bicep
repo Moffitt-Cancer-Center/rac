@@ -7,4 +7,5 @@ var roleIds = {
   keyVaultCertificatesUser: 'db79e9a7-68ee-4b58-9aeb-b90e7c24fcba'
   contributor: 'b24988ac-6180-42a0-ab88-20f7382dd24c'
   storageAccountKeyOperatorServiceRole: '81a9662b-bebf-436f-a333-f67b29880f12'
+  acrPull: '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 }

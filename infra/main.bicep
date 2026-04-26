@@ -266,6 +266,8 @@ module acr 'modules/acr.bicep' = {
     acrName: acrName
     peSubnetId: network.outputs.peSubnetId
     vnetId: network.outputs.vnetId
+    controlPlaneMiPrincipalId: managedIdentity.outputs.controlPlaneMiPrincipalId
+    shimMiPrincipalId: managedIdentity.outputs.shimMiPrincipalId
     tags: commonTags
   }
 }
