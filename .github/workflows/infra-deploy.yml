@@ -156,12 +156,11 @@ jobs:
 
   deploy-staging:
     name: Deploy (staging)
-    if: |
-      always() && (
-        (github.event_name == 'push' && needs.deploy-dev.result == 'success') ||
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging' &&
-          (needs.deploy-dev.result == 'success' || needs.deploy-dev.result == 'skipped'))
-      )
+    # Staging only deploys on explicit workflow_dispatch with environment=staging.
+    # Push-to-main deploys dev only; promotion to staging is a human action so
+    # observability tooling doesn't get spurious red runs when a staging Azure
+    # subscription / federated credential isn't configured for this fork.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging'
     needs: deploy-dev
     runs-on: ubuntu-latest
     environment: staging
@@ -188,13 +187,12 @@ jobs:
 
   deploy-prod:
     name: Deploy (prod)
-    if: |
-      always() && (
-        (github.event_name == 'push' && needs.deploy-staging.result == 'success') ||
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' &&
-          (needs.deploy-staging.result == 'success' || needs.deploy-staging.result == 'skipped'))
-      )
-    needs: deploy-staging
+    # Prod only deploys on explicit workflow_dispatch with environment=prod.
+    # No automatic staging->prod chain; each promotion is a human action via
+    # the workflow_dispatch UI (which also enforces the GitHub Environment's
+    # required-reviewers gate).
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    needs: []
     runs-on: ubuntu-latest
     environment: prod
     steps:
