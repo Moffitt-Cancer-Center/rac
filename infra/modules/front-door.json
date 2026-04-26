@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "49187114567812481"
+      "templateHash": "576209395943324143"
     }
   },
   "parameters": {
@@ -136,6 +136,7 @@
       "dependsOn": [
         "[resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv')))]",
         "[resourceId('Microsoft.Cdn/profiles/afdEndpoints', format('afd-rac-{0}', parameters('racEnv')), format('afd-endpoint-{0}', parameters('racEnv')))]",
+        "[resourceId('Microsoft.Cdn/profiles/originGroups/origins', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')), format('origin-appgw-{0}', parameters('racEnv')))]",
         "[resourceId('Microsoft.Cdn/profiles/originGroups', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')))]"
       ]
     },

@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "7535239347163642230"
+      "templateHash": "6520072037257778303"
     }
   },
   "functions": [
@@ -2373,7 +2373,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "4129510598027346719"
+              "templateHash": "576209395943324143"
             }
           },
           "parameters": {
@@ -2504,6 +2504,7 @@
               "dependsOn": [
                 "[resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv')))]",
                 "[resourceId('Microsoft.Cdn/profiles/afdEndpoints', format('afd-rac-{0}', parameters('racEnv')), format('afd-endpoint-{0}', parameters('racEnv')))]",
+                "[resourceId('Microsoft.Cdn/profiles/originGroups/origins', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')), format('origin-appgw-{0}', parameters('racEnv')))]",
                 "[resourceId('Microsoft.Cdn/profiles/originGroups', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')))]"
               ]
             },
@@ -2526,9 +2527,12 @@
             {
               "type": "Microsoft.Network/FrontDoorWebApplicationFirewallPolicies",
               "apiVersion": "2022-05-01",
-              "name": "[format('waf-rac-{0}', parameters('racEnv'))]",
+              "name": "[format('wafrac{0}', parameters('racEnv'))]",
               "location": "global",
               "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "Premium_AzureFrontDoor"
+              },
               "properties": {
                 "policySettings": {
                   "enabledState": "Enabled",
@@ -2538,7 +2542,8 @@
                   "managedRuleSets": [
                     {
                       "ruleSetType": "Microsoft_DefaultRuleSet",
-                      "ruleSetVersion": "2.1"
+                      "ruleSetVersion": "1.1",
+                      "ruleSetAction": "Block"
                     }
                   ]
                 }
@@ -2552,7 +2557,7 @@
                 "parameters": {
                   "type": "WebApplicationFirewall",
                   "wafPolicy": {
-                    "id": "[resourceId('Microsoft.Network/FrontDoorWebApplicationFirewallPolicies', format('waf-rac-{0}', parameters('racEnv')))]"
+                    "id": "[resourceId('Microsoft.Network/FrontDoorWebApplicationFirewallPolicies', format('wafrac{0}', parameters('racEnv')))]"
                   },
                   "associations": [
                     {
@@ -2571,7 +2576,7 @@
               "dependsOn": [
                 "[resourceId('Microsoft.Cdn/profiles/afdEndpoints', format('afd-rac-{0}', parameters('racEnv')), format('afd-endpoint-{0}', parameters('racEnv')))]",
                 "[resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv')))]",
-                "[resourceId('Microsoft.Network/FrontDoorWebApplicationFirewallPolicies', format('waf-rac-{0}', parameters('racEnv')))]"
+                "[resourceId('Microsoft.Network/FrontDoorWebApplicationFirewallPolicies', format('wafrac{0}', parameters('racEnv')))]"
               ]
             }
           ],
@@ -2595,7 +2600,7 @@
               "metadata": {
                 "description": "WAF Policy resource ID"
               },
-              "value": "[resourceId('Microsoft.Network/FrontDoorWebApplicationFirewallPolicies', format('waf-rac-{0}', parameters('racEnv')))]"
+              "value": "[resourceId('Microsoft.Network/FrontDoorWebApplicationFirewallPolicies', format('wafrac{0}', parameters('racEnv')))]"
             }
           }
         }
@@ -3176,7 +3181,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "3108928223028088444"
+              "templateHash": "14994820733035140349"
             }
           },
           "parameters": {
@@ -3425,10 +3430,10 @@
                       "timeAggregation": "Total",
                       "dimensions": [
                         {
-                          "name": "ResultType",
+                          "name": "StatusCode",
                           "operator": "Include",
                           "values": [
-                            "Forbidden"
+                            "403"
                           ]
                         }
                       ]
@@ -3447,6 +3452,7 @@
               ]
             },
             {
+              "condition": "[not(empty(parameters('controlPlaneAppId')))]",
               "type": "Microsoft.Insights/scheduledQueryRules",
               "apiVersion": "2023-03-15-preview",
               "name": "[format('alert-pipeline-stuck-{0}', parameters('racEnv'))]",
@@ -3464,7 +3470,7 @@
                 "criteria": {
                   "allOf": [
                     {
-                      "query": "          let window_start = ago(${2 * pipelineTimeoutMinutes}m);\n          let started = RAC_PipelineLog_CL\n            | where TimeGenerated between (window_start .. now())\n            | where event_type_s == \"pipeline_started\"\n            | project correlation_id_s, started_at = TimeGenerated;\n          let verdicts = RAC_PipelineLog_CL\n            | where TimeGenerated between (window_start .. now())\n            | where event_type_s == \"pipeline_verdict\"\n            | project correlation_id_s;\n          started\n          | where correlation_id_s !in (verdicts)\n          | where started_at < ago(${pipelineTimeoutMinutes}m)\n          | summarize stuck_count = count()\n          ",
+                      "query": "[format('let window_start = ago({0}m);\nlet started = RAC_PipelineLog_CL\n| where TimeGenerated between (window_start .. now())\n| where event_type_s == \"pipeline_started\"\n| project correlation_id_s, started_at = TimeGenerated;\nlet verdicts = RAC_PipelineLog_CL\n| where TimeGenerated between (window_start .. now())\n| where event_type_s == \"pipeline_verdict\"\n| project correlation_id_s;\nstarted\n| where correlation_id_s !in (verdicts)\n| where started_at < ago({1}m)\n| summarize stuck_count = count()', mul(2, parameters('pipelineTimeoutMinutes')), parameters('pipelineTimeoutMinutes'))]",
                       "timeAggregation": "Count",
                       "operator": "GreaterThan",
                       "threshold": 0,

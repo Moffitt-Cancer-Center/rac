@@ -77,9 +77,19 @@ resource origin 'Microsoft.Cdn/profiles/originGroups/origins@2023-05-01' = {
 }
 
 // Route: wildcard route to match *.parentDomain
+//
+// Explicit dependsOn on `origin`: Bicep infers a dependency on `originGroup`
+// via the `originGroup.id` reference, but ARM's Front Door scheduler can
+// schedule the route before the origin under that group is fully created,
+// which trips "make sure originGroup is created successfully and at least
+// one enabled origin is created". Forcing the route to wait on the origin
+// itself transitively covers the group and removes the race.
 resource route 'Microsoft.Cdn/profiles/afdEndpoints/routes@2023-05-01' = {
   name: 'route-wildcard-${racEnv}'
   parent: frontDoorEndpoint
+  dependsOn: [
+    origin
+  ]
   properties: {
     originGroup: {
       id: originGroup.id
