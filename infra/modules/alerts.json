@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "14994820733035140349"
+      "templateHash": "5617436465315707346"
     }
   },
   "parameters": {
@@ -75,6 +75,13 @@
         "description": "Pipeline timeout in minutes (used for stuck-pipeline alert threshold). Max 180 min due to Azure 360-min schema limit (2x multiplier for alert window)."
       }
     },
+    "deployTelemetryAlerts": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy alerts that depend on telemetry tables/columns (ContainerAppConsoleLogs_CL.StatusCode_d, RAC_PipelineLog_CL). Azure validates KQL at create time, so these fail on a fresh workspace before the app has emitted any structured logs. Flip true once logs are flowing."
+      }
+    },
     "tags": {
       "type": "object",
       "metadata": {
@@ -107,7 +114,7 @@
       }
     },
     {
-      "condition": "[not(empty(parameters('shimAppId')))]",
+      "condition": "[and(not(empty(parameters('shimAppId'))), parameters('deployTelemetryAlerts'))]",
       "type": "Microsoft.Insights/scheduledQueryRules",
       "apiVersion": "2023-03-15-preview",
       "name": "[format('alert-shim-5xx-{0}', parameters('racEnv'))]",
@@ -147,7 +154,7 @@
       ]
     },
     {
-      "condition": "[not(empty(parameters('controlPlaneAppId')))]",
+      "condition": "[and(not(empty(parameters('controlPlaneAppId'))), parameters('deployTelemetryAlerts'))]",
       "type": "Microsoft.Insights/scheduledQueryRules",
       "apiVersion": "2023-03-15-preview",
       "name": "[format('alert-controlplane-5xx-{0}', parameters('racEnv'))]",
@@ -276,7 +283,7 @@
       ]
     },
     {
-      "condition": "[not(empty(parameters('controlPlaneAppId')))]",
+      "condition": "[and(not(empty(parameters('controlPlaneAppId'))), parameters('deployTelemetryAlerts'))]",
       "type": "Microsoft.Insights/scheduledQueryRules",
       "apiVersion": "2023-03-15-preview",
       "name": "[format('alert-pipeline-stuck-{0}', parameters('racEnv'))]",

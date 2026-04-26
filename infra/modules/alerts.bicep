@@ -29,6 +29,9 @@ param logAnalyticsWorkspaceId string
 @maxValue(180)
 param pipelineTimeoutMinutes int = 120
 
+@description('Deploy alerts that depend on telemetry tables/columns (ContainerAppConsoleLogs_CL.StatusCode_d, RAC_PipelineLog_CL). Azure validates KQL at create time, so these fail on a fresh workspace before the app has emitted any structured logs. Flip true once logs are flowing.')
+param deployTelemetryAlerts bool = false
+
 @description('Resource tags applied to all resources')
 param tags object
 
@@ -58,7 +61,7 @@ resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
 }
 
 // Alert: Shim 5xx error rate > 1% (via scheduled query rule on Log Analytics)
-resource alertShim5xx 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (!empty(shimAppId)) {
+resource alertShim5xx 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (!empty(shimAppId) && deployTelemetryAlerts) {
   name: 'alert-shim-5xx-${racEnv}'
   location: location
   tags: tags
@@ -100,7 +103,7 @@ resource alertShim5xx 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview
 }
 
 // Alert: Control Plane 5xx error rate > 1% (via scheduled query rule on Log Analytics)
-resource alertControlPlane5xx 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (!empty(controlPlaneAppId)) {
+resource alertControlPlane5xx 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (!empty(controlPlaneAppId) && deployTelemetryAlerts) {
   name: 'alert-controlplane-5xx-${racEnv}'
   location: location
   tags: tags
@@ -231,7 +234,7 @@ resource alertKeyVaultAccessDenied 'Microsoft.Insights/metricAlerts@2018-03-01' 
 // Gated behind controlPlaneAppId because the custom table RAC_PipelineLog_CL is
 // created by control-plane pipeline ingestion — it doesn't exist on first deploy
 // and the alert's KQL fails with "Failed to resolve table" until then.
-resource alertPipelineStuck 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (!empty(controlPlaneAppId)) {
+resource alertPipelineStuck 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (!empty(controlPlaneAppId) && deployTelemetryAlerts) {
   name: 'alert-pipeline-stuck-${racEnv}'
   location: location
   tags: tags
