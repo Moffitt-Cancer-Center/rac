@@ -1,6 +1,6 @@
 # apps/shim — Token-Check Shim
 
-**Freshness:** 2026-04-24
+**Freshness:** 2026-04-26
 
 ## Purpose
 
@@ -43,6 +43,10 @@ Starlette + httpx reverse proxy that sits between App Gateway and researcher ACA
 ## Deployment
 
 Deployed as a single ACA container app via `infra/modules/shim-aca-app.bicep`. The App Gateway backend pool points at the shim's internal FQDN. All researcher apps are internal-only ACA apps; only the shim is reachable from outside.
+
+**Runtime quirks worth remembering:**
+- `aiohttp>=3.10` is a hard dep (declared in `pyproject.toml`) because `azure-identity`'s async credential flow imports it. Removing it breaks shim startup.
+- The Dockerfile invokes gunicorn as `python -m gunicorn …`, not as a bare `gunicorn` command. uv produces venv shebangs with absolute paths to the build-stage `/app/.venv`; those paths don't survive `COPY --from=builder` into the runtime stage and cause `exec format error`. Don't change the entrypoint back to `gunicorn …`.
 
 ## Tests
 

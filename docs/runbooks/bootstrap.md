@@ -301,38 +301,9 @@ KV_URI=$(az deployment sub show \
 echo "Key Vault: $KV_URI"
 ```
 
-### Verify Postgres `pg_uuidv7` Extension Allowlist
+### Postgres UUID extension
 
-Phase 2 migrations call `uuid_generate_v7()`, which requires the `pg_uuidv7` extension. The Bicep module adds it to `azure.extensions` shared_preload_libraries, but allowlist availability varies by PG version and region. Confirm:
-
-```bash
-az postgres flexible-server parameter show \
-  --resource-group rg-rac-dev \
-  --server-name rac-dev-pg \
-  --name azure.extensions \
-  --query "value" -o tsv
-# Expected: value contains "pg_uuidv7"
-
-az postgres flexible-server parameter show \
-  --resource-group rg-rac-dev \
-  --server-name rac-dev-pg \
-  --name azure.extensions \
-  --query "allowedValues" -o tsv | tr ',' '\n' | grep -w pg_uuidv7
-# Expected: prints "pg_uuidv7" (extension is on the region's allowlist)
-```
-
-If `pg_uuidv7` is NOT in `allowedValues` for your region+version, you have two options:
-
-1. **Re-register with the allowlist manually** (sometimes needed if the first deploy raced against the server's provisioning):
-   ```bash
-   az postgres flexible-server parameter set \
-     --resource-group rg-rac-dev \
-     --server-name rac-dev-pg \
-     --name azure.extensions \
-     --value pg_uuidv7
-   ```
-
-2. **Fall back to `uuid-ossp`** (always available) — update Phase 2's Alembic migration to create `uuid-ossp` instead and wrap `uuid_generate_v7()` with a SQL function using `uuid_generate_v4()` as a stopgap. Track the restoration in a TODO tied to the pg_uuidv7 GA.
+Migration 0001 creates the `uuid-ossp` extension and defines a `uuidv7()` SQL wrapper that delegates to `uuid_generate_v4()`. We use `uuid-ossp` (universally available) rather than `pg_uuidv7` because the latter is **not** on the Azure PG flexible-server `azure.extensions` allowlist for several regions (eastus2 confirmed 2026-04-25). No manual extension allowlisting is required for the bootstrap path. If a future deployment is in a region where `pg_uuidv7` is allowlisted and you want the time-ordering back, change the body of `uuidv7()` in a forward migration — column DDL is unchanged.
 
 ### Front Door Custom Domain Validation
 
@@ -417,6 +388,58 @@ az deployment sub create \
 ```
 
 This second deploy is idempotent: all other resources remain unchanged; only the conditional DNS Zone Contributor role assignment is created.
+
+## 9b. Phase 2 Control Plane Deployment
+
+After Phase 2 ships, the deploy sequence is:
+
+1. **Build + push the control-plane image to ACR.** The platform ACR has
+   `publicNetworkAccess: 'Disabled'`, so a `docker push` from a workstation
+   fails until the registry is reachable. The fastest workaround for a
+   first-deploy from a personal laptop is to temporarily enable public
+   network access for the push window only:
+
+   ```bash
+   ACR=$(az acr list --resource-group rg-rac-dev --query "[0].name" -o tsv)
+   az acr update --name "$ACR" --public-network-enabled true
+   az acr login --name "$ACR"
+   docker push "$ACR.azurecr.io/rac-control-plane:dev-001"
+   az acr update --name "$ACR" --public-network-enabled false
+   ```
+
+   Long-term answer: build in CI inside the VNet (self-hosted runner) or
+   use ACR Tasks with private endpoint already wired. The KV has the same
+   constraint for operator-driven `az keyvault secret set` calls — open it
+   briefly, seed the secret, close it.
+
+2. **Seed control-plane secrets in the platform KV** (not the bootstrap
+   KV). Today the control-plane container reads `rac-pg-admin-password`
+   directly because the deployed image authenticates as `rac_admin` for
+   smoke-test purposes. Copy it from the bootstrap KV:
+
+   ```bash
+   PLATFORM_KV=$(az keyvault list --resource-group rg-rac-dev --query "[0].name" -o tsv)
+   PG_ADMIN=$(az keyvault secret show --vault-name kv-rac-bootstrap-001 \
+     --name pg-admin-password-dev --query value -o tsv)
+   az keyvault secret set --vault-name "$PLATFORM_KV" \
+     --name rac-pg-admin-password --value "$PG_ADMIN"
+   ```
+
+   When the follow-up that switches the control plane to `rac_app` lands,
+   replace this with a dedicated `rac-app-db-password` secret backed by the
+   actual `rac_app` LOGIN role.
+
+3. **Run alembic migrations.** Migrations are baked into the control-plane
+   image. After the ACA app is deployed and healthy, exec into it:
+
+   ```bash
+   az containerapp exec --name ca-rac-cp-dev --resource-group rg-rac-dev \
+     --command "alembic upgrade head"
+   ```
+
+   This applies all 12 migrations including 0009 which creates `rac_app`
+   (NOLOGIN placeholder) and `rac_shim` (LOGIN, no password set yet).
+   Verify `/health` returns `{"status":"healthy",...}` afterwards.
 
 ## 10. Phase 6 Shim Deployment
 
@@ -544,7 +567,7 @@ These are bugs that surfaced during the first end-to-end deploy and will surface
 
 **Region offer restrictions on personal/trial subscriptions.**
 - `Microsoft.DBforPostgreSQL` is offer-restricted in `eastus` for personal/trial subs. Use `eastus2` or request a quota increase. Probe via `az postgres flexible-server list-skus --location <region>` (returns empty if restricted).
-- `pg_uuidv7` is **not** in the `azure.extensions` allowlist for some regions/PG versions (notably `eastus2`). Override `pgExtensions=['uuid-ossp']` in the env's bicepparam; update Phase 2's Alembic migration to use `uuid_generate_v4()` if you need a working app on the platform. Check the allowlist via `az postgres flexible-server parameter show --resource-group <rg> --server-name <pg> --name azure.extensions --query "allowedValues"`.
+- `pg_uuidv7` is **not** in the `azure.extensions` allowlist for some regions/PG versions (notably `eastus2`). Migration 0001 already uses `uuid-ossp` with a `uuidv7()` SQL wrapper that emits v4 UUIDs, so no override is needed. If you ever change the migration back to require `pg_uuidv7`, check the allowlist first via `az postgres flexible-server parameter show --resource-group <rg> --server-name <pg> --name azure.extensions --query "allowedValues"`.
 
 **Soft-delete name reservations.**
 - Key Vault: 7–90 day reservation on names after deletion. Identical re-deploy in the same subscription/RG hits the same `uniqueString` hash and collides. `scripts/teardown.sh` purges KVs matching the env tag, but only for KVs that were created with that tag. Manually purge via `az keyvault purge --name <kv> --location <region>` if needed.
@@ -568,6 +591,16 @@ These are bugs that surfaced during the first end-to-end deploy and will surface
 
 **Cross-RG role assignments must live in their own module.**
 - The App Gateway MI needs Secrets/Certificates User on the **bootstrap KV** (different RG from platform). Wire this via a module scoped to `resourceGroup('rg-rac-bootstrap')`. See `infra/modules/bootstrap-kv-rbac.bicep`.
+
+**Private endpoints make first push/seed painful.**
+- Both ACR and the platform KV ship with `publicNetworkAccess: 'Disabled'`. A `docker push` from a workstation, or `az keyvault secret set` for operator-managed secrets, fails until you punch a temporary hole. The intended pattern is `az acr update --public-network-enabled true`, push/seed, `az acr update --public-network-enabled false`. Same for KV via `az keyvault update --public-network-access Enabled`. Long-term: move pushes into a VNet-resident CI runner.
+
+**Platform-MI role grants people forget.**
+- ACA secret-resolution failures (control plane / shim never starting) are almost always a missing **Key Vault Secrets User** grant on the platform KV for the app's user-assigned MI. `role-assignments.bicep` grants Crypto User and Secrets User; if you bypass that module on a custom deploy you'll see opaque "secret not found" startup errors.
+- `rac-control-plane:<tag>` and `rac-shim:<tag>` images only pull if the matching MIs hold **AcrPull** on the registry. `acr.bicep` issues both grants when `controlPlaneMiPrincipalId` and `shimMiPrincipalId` are non-empty.
+
+**Telemetry alert KQL fails on a fresh Log Analytics workspace.**
+- `alerts.bicep` references `ContainerAppConsoleLogs_CL.StatusCode_d` and the custom `RAC_PipelineLog_CL` table. Neither exists until traffic has flowed. The module gates these alerts on `deployTelemetryAlerts` (default `false`); flip to `true` on a follow-up deploy after logs accumulate, otherwise the deploy fails ARM validation with `InvalidQuery`.
 
 **GitHub Actions OIDC + long Azure deploys.**
 - GitHub's OIDC assertion is valid for **5 minutes**. Sync `az deployment sub create` against a deploy that takes >50 min will fail with `AADSTS700024` when az CLI tries to refresh. The fix is `--no-wait` + a polling loop (each poll completes inside the AAD token's 1-hour lifetime) — already wired into `.github/workflows/infra-deploy.yml`.

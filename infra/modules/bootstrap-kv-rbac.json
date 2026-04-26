@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "4358568595503063420"
+      "templateHash": "8093406412586303624"
     }
   },
   "parameters": {
@@ -32,7 +32,8 @@
       "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
       "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
       "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
-      "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12"
+      "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
+      "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
     }
   },
   "resources": {

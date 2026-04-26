@@ -1,6 +1,6 @@
 # control-plane/backend — FastAPI Control Plane
 
-**Freshness:** 2026-04-24
+**Freshness:** 2026-04-26
 
 ## Purpose
 
@@ -31,7 +31,7 @@ The authoritative API for submission intake, approval workflow, Tier 3 provision
 
 ## Invariants
 
-- **DB roles.** Backend uses the `rac_app` role which has full CRUD. It must never run queries on behalf of the shim. Migration 0009 creates `rac_shim` separately with a narrow grant set (SELECT app/app_version/revoked_token, INSERT access_log). Do not grant `rac_shim` anything else.
+- **DB roles.** Target end state: backend authenticates as `rac_app` (full CRUD, owned by migration 0009). **Currently the deployed control plane connects as `rac_admin`** using the bootstrap admin password (KV secret `rac-pg-admin-password`) — this is a smoke-test posture. The `controlPlanePgUser` bicep param defaults to `rac_admin`; flipping to `rac_app` requires (a) `ALTER ROLE rac_app LOGIN PASSWORD '…'`, (b) a separate KV secret, (c) a redeploy with the new `controlPlanePgUser` + `controlPlanePgPasswordSecretName`. Migration 0009 also creates `rac_shim` with a narrow grant set (SELECT app/app_version/revoked_token, INSERT access_log). Do not grant `rac_shim` anything else, and do not run shim queries through the backend.
 - **Asset finalize.** A submission cannot advance to detection-rules until every asset has a non-null `sha256`. Uploads (SAS) compute sha server-side; external URLs verify after fetch; `finalize_submission` is called only when both conditions hold. The `missing_sha` detection rule additionally blocks advancement if an external URL is still pending.
 - **No raw handler DB sessions.** Handlers always use the `get_session` dependency; services take `AsyncSession` as a parameter. No module-level sessions.
 - **FCIS.** Every module starts with `# pattern: Functional Core` or `# pattern: Imperative Shell`. Pure cores accept `now=`, `uuid=` injection.
@@ -40,6 +40,14 @@ The authoritative API for submission intake, approval workflow, Tier 3 provision
 
 `migrations/versions/` — Alembic, strictly forward. Current head: `0012_asset_columns_phase8`. Schema covers 15 tables: `app`, `app_version`, `submission`, `submission_asset`, `approval_event`, `agent`, `webhook_subscription`, `webhook_delivery`, `detection_finding`, `detection_finding_decision`, `scan_result`, `reviewer_token`, `revoked_token`, `access_log`, `cost_snapshot`, plus the `idempotency_key` middleware table.
 
+**`uuidv7()` is a SQL wrapper over `uuid_generate_v4()`**, not the `pg_uuidv7` extension — see migration 0001's docstring. The wrapper exists so column DDL (`server_default=sa.text("uuidv7()")`) stays portable across regions where `pg_uuidv7` is not on the Azure PG allowlist. Acceptable trade-off: lose v7 time-ordering on UUID PKs.
+
+**Migrations are baked into the control-plane image.** The Dockerfile copies `alembic.ini` and `migrations/` into the runtime image so `alembic upgrade head` runs via `az containerapp exec` without needing a sidecar. `migrations/env.py` treats the literal `driver://...` placeholder in `alembic.ini` as "unset" and falls back to `Settings()` so an interactive `alembic` invocation in-container works without `DATABASE_URL` being explicitly set.
+
 ## Tests
 
 `tests/` runs against a real Postgres via the repo-level container fixture. `conftest.py` wires up the mock OIDC provider for both human and client-credentials flows. Count: 652 passing as of 2026-04-24.
+
+## Logging gotcha
+
+`logging_setup.py` does **not** include `structlog.stdlib.add_logger_name` in the processor chain — it is incompatible with `PrintLoggerFactory` (which doesn't carry a logger name) and crashes the worker on the first WARN/ERROR emit. Don't re-add it.

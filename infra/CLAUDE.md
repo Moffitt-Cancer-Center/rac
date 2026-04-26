@@ -1,6 +1,6 @@
 # infra — Tier 2 platform Bicep
 
-**Freshness:** 2026-04-24
+**Freshness:** 2026-04-26 (after first end-to-end deploy in eastus2 personal sub)
 
 ## Purpose
 
@@ -17,11 +17,13 @@ Deploys the per-environment Tier 2 platform: networking, identity, Postgres, ACR
 
 Several resources have circular dependencies that Bicep cannot resolve in a single pass:
 
-1. **Pass 1** — Deploy with `deployRoleAssignments=false` and `deployShimApp=false`. This creates the managed identity, KV, Postgres, ACA env, Shim app registry tables, etc.
-2. **Out-of-band step** — Run Postgres bootstrap SQL (`docs/runbooks/bootstrap.md` step 6) which creates the `rac_shim` role (migration 0009). Seed KV secrets and reviewer signing key. Get the managed identity's principal id.
-3. **Pass 2** — Deploy with both flags true. `role-assignments.bicep` grants the MI the roles it needs (AcrPull, KV Secrets/Keys User, Storage Blob Data Contributor, etc.); `shim-aca-app.bicep` deploys the shim container with KV references resolved.
+1. **Pass 1** — Deploy with `deployRoleAssignments=false`, `deployShimApp=false`, `deployControlPlaneApp=false`, `deployTelemetryAlerts=false`. This creates the managed identities, KV, Postgres (including the `appDatabase` resource — default name `rac`), ACR, ACA env, Front Door, App Gateway, etc.
+2. **Out-of-band step** — Run Alembic migrations (`alembic upgrade head` from inside the control-plane container via `az containerapp exec`, or any other connection that reaches PG). This applies migration 0009 which creates `rac_app` (NOLOGIN placeholder) and `rac_shim` (LOGIN, no password set). Then: `ALTER ROLE rac_shim WITH PASSWORD '…'`, seed `rac-pg-admin-password`, `shim-database-dsn`, `shim-cookie-hmac` in the **platform** KV (the bootstrap KV holds only the bootstrap admin password and the AppGw cert), and seed the reviewer signing key.
+3. **Pass 2** — Deploy with `deployRoleAssignments=true`, `deployShimApp=true`, `deployControlPlaneApp=true` (image refs supplied), and `deployTelemetryAlerts=true` only after logs have flowed long enough for the referenced KQL columns/tables to exist. `role-assignments.bicep` grants the MIs the roles they need (**AcrPull on the ACR**, **Key Vault Secrets User** for control plane + shim + AppGw on the platform KV, KV Crypto User, Storage Blob Data Contributor, etc.); `shim-aca-app.bicep` and `control-plane-aca-app.bicep` deploy the containers with KV `secretref` resolution working.
 
-Skipping pass 1 → deploying Shim will fail because its MI has no KV access yet.
+Skipping pass 1 → deploying Shim or Control Plane will fail because their MIs have no KV/ACR access yet, and ACA secret-resolution surfaces this as a generic "secret not found" error.
+
+**Telemetry alerts are gated on `deployTelemetryAlerts` (default false).** Three KQL alerts in `alerts.bicep` reference `ContainerAppConsoleLogs_CL.StatusCode_d` and the custom `RAC_PipelineLog_CL` table, which only exist after real traffic has flowed. Leaving the flag false on a fresh deploy avoids `InvalidQuery` ARM-side validation failures.
 
 ## Module invariants
 
@@ -29,6 +31,8 @@ Skipping pass 1 → deploying Shim will fail because its MI has no KV access yet
 - KV is created with **purge protection on** and a **90-day soft-delete retention** in non-dev. Any change here must be param-driven (`enablePurgeProtection`, `softDeleteRetentionInDays`) — never hard-coded.
 - Network subnets are declared in `network.bicep`; ACA env, Postgres, and private endpoints all reference subnet outputs. Adding a new subnet always goes in this module, never inlined.
 - Role IDs (built-in Azure roles) come from `role-ids.bicep` — never hard-code a role GUID elsewhere.
+- ACR `quarantinePolicy` is **disabled** in `acr.bicep`. We don't attach a quarantine-releasing scanner here (researcher-image scanning happens in the rac-pipeline repo); leaving it on causes every pushed tag to come back as `MANIFEST_UNKNOWN`.
+- The application database (`rac` by default) is declared as a child resource of the PG flexible server in `postgres.bicep`. Do not create it out-of-band.
 
 ## Scheduled jobs
 

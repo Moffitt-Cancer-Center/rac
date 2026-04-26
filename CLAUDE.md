@@ -1,6 +1,6 @@
 # RAC — Research Application Commons
 
-**Freshness:** 2026-04-24 (after Phase 1–8 v1 implementation, commit 82e997b)
+**Freshness:** 2026-04-26 (after first end-to-end dev deploy: pass-1 platform + Phase 2 control plane + Phase 6 shim live in `rg-rac-dev` / `eastus2`)
 
 ## What this is
 
@@ -18,7 +18,7 @@ Each deployment is one Azure subscription hosting one Tier 2 platform (VNet, Pos
 
 ## Cross-cutting architectural decisions
 
-**Control Plane and Shim share one Postgres database but use different DB roles.** `rac_app` (control plane) has read/write across all tables. `rac_shim` has SELECT on `app` + `app_version` + `revoked_token` and INSERT on `access_log` only. This is enforced by migration `0009_rac_shim_db_role` and is the principal defense against shim compromise turning into a control-plane compromise.
+**Control Plane and Shim share one Postgres database but use different DB roles.** Target end state: `rac_app` (control plane, read/write across all tables) and `rac_shim` (SELECT on `app` + `app_version` + `revoked_token`, INSERT on `access_log` only). Migration `0009_rac_shim_db_role` creates `rac_shim` with the narrow grants, and creates `rac_app` as a NOLOGIN placeholder. **As of 2026-04-26 the deployed control plane still authenticates as `rac_admin`** (smoke-test posture); switching to `rac_app` with its own KV-stored password is a tracked follow-up. The shim already runs as `rac_shim`. Do not relax `rac_shim`'s grants for any reason.
 
 **Reviewer tokens are JWS signed by Key Vault.** Private key never leaves KV. Control plane assembles the JWS header/payload as pure code, calls `CryptographyClient.sign` for the signature, and concatenates. Signature format (raw IEEE P1363 vs DER) varies by KV algorithm and is probed at control-plane startup via `key_probe.py`; the discovered format is cached and used for subsequent signings. Shim verifies signatures using a public-key cache (`KeyVaultPublicKeyCache`) with TTL. Never re-implement the probe ad-hoc — reuse the module.
 
@@ -33,6 +33,8 @@ Each deployment is one Azure subscription hosting one Tier 2 platform (VNet, Pos
 ## FCIS discipline
 
 All `# pattern: Functional Core` modules must stay pure: no I/O, no datetime.now, no uuid4, no DB. The shell passes `now=`, `record_id=`, session, pool, etc. Code review is strict on this.
+
+**UUID PKs use a `uuidv7()` wrapper, not the `pg_uuidv7` extension.** `pg_uuidv7` is not on the Azure PG flexible-server `azure.extensions` allowlist for several regions (eastus2 confirmed). Migration 0001 creates `uuid-ossp` and defines `uuidv7()` as a SQL function returning `uuid_generate_v4()`. Every column DDL still calls `uuidv7()`, so the call site is stable; we just lose v7 time-ordering. If a future region restores `pg_uuidv7`, swap the wrapper body — don't touch the column defaults.
 
 ## Test footprint
 

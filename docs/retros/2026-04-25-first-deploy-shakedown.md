@@ -89,3 +89,79 @@ runtime constraints surfaced one at a time:
   federated credentials.
 - Add `scripts/infra-test-module.sh` for per-module sandbox testing.
 - Consider adding `infra-validate.sh` to GHA pre-push.
+
+## Addendum — 2026-04-26 (Phase 2 + Phase 6 image deploy)
+
+Same flavor of bugs (Bicep auth/permission/network gaps + a couple of
+runtime app-side surprises). Pass-1 platform was untouched; Phase 2 control
+plane and Phase 6 shim are now both live with `/health` and
+`/_shim/health` returning 200. Image tag `dev-003`, ACR
+`racdevacrczo2xbgcnq.azurecr.io`. All 12 alembic migrations applied via
+`az containerapp exec`.
+
+### Permission/role gaps
+
+- Control plane + shim user-assigned MIs were missing **Key Vault Secrets
+  User** on the platform KV. ACA's `secretref` to `rac-pg-admin-password`
+  / `shim-database-dsn` / `shim-cookie-hmac` failed at startup with
+  generic "secret not found". Fixed in `role-assignments.bicep`.
+- Same MIs were missing **AcrPull** on the platform ACR. Image pull
+  failed silently (revision provisioning stalled). Fixed in `acr.bicep`
+  by adding two scoped role assignments.
+- Control-plane MI ended up with **Contributor on `rg-rac-dev`** as a
+  side-effect of how `role-assignments.bicep` is currently wired. Over-
+  grant; flagged as a follow-up.
+
+### Bicep / ACR gotchas
+
+- `acr.bicep` had `quarantinePolicy` enabled by default. With no
+  scanner-releaser attached, every pushed tag came back as
+  `MANIFEST_UNKNOWN` on pull. Fixed by setting `status: 'disabled'`.
+- The application database (`rac`) was being created out-of-band; moved
+  into `postgres.bicep` as a child `appDatabase` resource so it's
+  declarative.
+- Three KQL alerts referenced Log Analytics columns/tables that don't
+  exist on a fresh workspace (`ContainerAppConsoleLogs_CL.StatusCode_d`,
+  `RAC_PipelineLog_CL`). ARM rejected the deploy with `InvalidQuery`.
+  Fixed by gating them behind `deployTelemetryAlerts bool = false`.
+
+### Networking
+
+- Both ACR and platform KV ship with `publicNetworkAccess: 'Disabled'`.
+  First-time `docker push` from a laptop and `az keyvault secret set`
+  for operator-managed secrets both fail until you temporarily flip
+  public access on. Documented as a runbook pattern; long-term answer is
+  a VNet-resident CI runner.
+
+### App-side surprises
+
+- Control plane `logging_setup.py` had `structlog.stdlib.add_logger_name`
+  in the chain. Incompatible with `PrintLoggerFactory`; first WARN emit
+  killed the worker. Removed.
+- `migrations/env.py` was treating the literal `driver://...` placeholder
+  in `alembic.ini` as a usable URL, so an interactive `alembic` invocation
+  in the container tried to connect to localhost. Patched to fall back to
+  `Settings()` when the URL is the placeholder.
+- Shim Dockerfile was invoking `gunicorn` directly. The uv-built venv
+  shebang has an absolute path to the build-stage `/app/.venv` that
+  doesn't survive `COPY --from=builder` into the runtime stage; it
+  failed with `exec format error`. Switched to `python -m gunicorn`.
+- Shim was missing `aiohttp>=3.10` as a direct dep; `azure-identity`'s
+  async credential flow needs it. Added to `pyproject.toml`.
+- Migration 0001 originally used `pg_uuidv7`, which isn't on the
+  `azure.extensions` allowlist for `eastus2`. Swapped to `uuid-ossp` +
+  a `uuidv7()` SQL wrapper that returns `uuid_generate_v4()`. Lose
+  v7 time-ordering, gain portability.
+
+### Active follow-ups (carried forward)
+
+- Switch control-plane DB user from `rac_admin` to `rac_app` with its
+  own KV-stored password (today's smoke-test posture is over-privileged).
+- Tighten control-plane MI scope (currently RG-Contributor; should be
+  per-resource grants only).
+- Phase 5 bridge re-deploy so `rac-dev.rac.checkwithscience.com` actually
+  routes (DNS Zone Contributor on the child zone).
+- Flip `deployCustomDomain=true` on Front Door once a real cert is in
+  place.
+- Flip `deployTelemetryAlerts=true` once logs have flowed long enough for
+  the referenced columns to exist.
