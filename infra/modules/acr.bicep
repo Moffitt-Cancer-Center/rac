@@ -32,8 +32,15 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
     adminUserEnabled: false
     publicNetworkAccess: 'Disabled'
     policies: {
+      // Quarantine policy holds pushed images until an external scanner
+      // explicitly releases them. We don't run a quarantine-releasing
+      // scanner against this registry — researcher image scanning happens
+      // downstream in the rac-pipeline (Defender for Containers + Grype),
+      // and Tier-2 platform images (control plane, shim) are operator-
+      // controlled. Leaving this enabled with no releaser causes every
+      // pushed tag to disappear ("MANIFEST_UNKNOWN") on pull.
       quarantinePolicy: {
-        status: 'enabled'
+        status: 'disabled'
       }
     }
   }
