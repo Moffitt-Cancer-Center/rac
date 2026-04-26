@@ -39,7 +39,11 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
 
 USER shim
 
-CMD ["gunicorn", "rac_shim.main:app", \
+# uv builds the venv with absolute-path shebangs pointing at /build/.venv,
+# so the script wrappers in /app/.venv/bin won't run after the COPY across
+# stages. Invoke gunicorn through its module so we route via the venv's
+# `python` symlink (which is just /usr/local/bin/python3).
+CMD ["python", "-m", "gunicorn", "rac_shim.main:app", \
      "--worker-class", "uvicorn.workers.UvicornWorker", \
      "--workers", "2", \
      "--bind", "0.0.0.0:8080"]
