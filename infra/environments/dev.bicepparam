@@ -39,7 +39,7 @@ param kvSoftDeleteRetentionInDays = 7
 // ===== Phase 6: Shim =====
 // Operator must seed `shim-database-dsn` and `shim-cookie-hmac` in the
 // platform KV before deploying with shimImageName set.
-param shimImageName = 'racdevacrczo2xbgcnq.azurecr.io/rac-shim:dev-002'
+param shimImageName = 'racdevacrczo2xbgcnq.azurecr.io/rac-shim:dev-003'
 param shimIssuer = 'https://rac-dev.rac.checkwithscience.com'
 param shimCookieDomain = '.rac-dev.rac.checkwithscience.com'
 param shimInstitutionName = 'RAC Demo (checkwithscience.com)'

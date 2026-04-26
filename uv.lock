@@ -2282,6 +2282,7 @@ name = "rac-shim"
 version = "1.0.0"
 source = { editable = "apps/shim" }
 dependencies = [
+    { name = "aiohttp" },
     { name = "asyncpg" },
     { name = "azure-identity" },
     { name = "azure-keyvault-keys" },
@@ -2311,6 +2312,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.10" },
     { name = "asyncpg", specifier = ">=0.29" },
     { name = "azure-identity", specifier = ">=1.19" },
     { name = "azure-keyvault-keys", specifier = ">=4.8" },

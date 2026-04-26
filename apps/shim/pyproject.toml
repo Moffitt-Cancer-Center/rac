@@ -12,6 +12,10 @@ dependencies = [
   "azure-identity>=1.19",
   "azure-keyvault-keys>=4.8",
   "azure-keyvault-secrets>=4.8",
+  # azure-identity's async managed-identity flow uses aiohttp as its
+  # default async transport; without this, the shim crashes at startup
+  # with `ImportError: aiohttp package is not installed`.
+  "aiohttp>=3.10",
   "structlog>=24.0",
   "pydantic-settings>=2.4",
   "opentelemetry-sdk>=1.25",
