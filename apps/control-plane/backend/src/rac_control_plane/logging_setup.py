@@ -11,10 +11,16 @@ from rac_control_plane.settings import Settings
 def configure_logging(settings: Settings) -> None:
     """Configure structlog with JSON output and App Insights handler if available."""
 
-    # Base processors for all loggers
+    # Base processors for all loggers.
+    #
+    # `structlog.stdlib.add_logger_name` only works against stdlib-backed
+    # loggers (it reads `.name` off the underlying logger). We use
+    # `PrintLoggerFactory` below — which yields `structlog.PrintLogger`
+    # instances that have no `.name` — so calling `add_logger_name` will
+    # crash on the first emit. Drop it; the module path is already part
+    # of `event_dict` via `structlog.get_logger(__name__)` callsites.
     shared_processors: list[Any] = [
         structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso"),
     ]
 
