@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "10441728340336848626"
+      "templateHash": "8412023412439794311"
     }
   },
   "parameters": {
@@ -70,6 +70,18 @@
         "principalType": "ServicePrincipal"
       }
     },
+    "kvSecretsUserForControlPlane": {
+      "condition": "[and(not(empty(parameters('controlPlaneMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv'))]",
+      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('controlPlaneMiPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsUser)]",
+        "principalId": "[parameters('controlPlaneMiPrincipalId')]",
+        "principalType": "ServicePrincipal"
+      }
+    },
     "kvCryptoUserForShim": {
       "condition": "[and(not(empty(parameters('shimMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
       "type": "Microsoft.Authorization/roleAssignments",
@@ -78,6 +90,18 @@
       "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('shimMiPrincipalId'), variables('roleIds').keyVaultCryptoUser)]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultCryptoUser)]",
+        "principalId": "[parameters('shimMiPrincipalId')]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    "kvSecretsUserForShim": {
+      "condition": "[and(not(empty(parameters('shimMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv'))]",
+      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('shimMiPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsUser)]",
         "principalId": "[parameters('shimMiPrincipalId')]",
         "principalType": "ServicePrincipal"
       }

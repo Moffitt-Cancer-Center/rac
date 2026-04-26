@@ -17,11 +17,18 @@ target_metadata = Base.metadata
 
 
 def _get_database_url() -> str:
-    """Get database URL: prefer explicitly set URL in alembic config, fall back to settings."""
+    """Get database URL: prefer explicitly set URL in alembic config, fall back to settings.
+
+    The alembic.ini ships with a placeholder URL ("driver://user:pass@…")
+    so SQLAlchemy doesn't barf on a missing key when test fixtures set the
+    URL explicitly. Treat that placeholder as 'unset' and fall back to
+    settings, otherwise `alembic upgrade head` from a deployed container
+    silently tries to connect to localhost.
+    """
     url = config.get_main_option("sqlalchemy.url")
-    if url:
+    if url and not url.startswith("driver://"):
         return url
-    # Fall back to application settings when no URL is explicitly configured
+    # Fall back to application settings when no real URL is configured.
     from rac_control_plane.settings import get_settings
     settings = get_settings()
     return settings.pg_dsn

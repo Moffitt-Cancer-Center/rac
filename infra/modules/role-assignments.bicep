@@ -45,6 +45,21 @@ resource kvCryptoOfficerForControlPlane 'Microsoft.Authorization/roleAssignments
   }
 }
 
+// Key Vault Secrets User role for Control Plane MI
+// Allows the Control Plane to read DB credentials, files-storage account
+// keys, GH App private key, and any other Key Vault secret references
+// configured in control-plane-aca-app.bicep. Crypto Officer above only
+// covers KV keys (signing/encryption), not secrets.
+resource kvSecretsUserForControlPlane 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(controlPlaneMiPrincipalId) && !empty(kvResourceId)) {
+  scope: kv
+  name: guid(kv.id, controlPlaneMiPrincipalId, roleIds.keyVaultSecretsUser)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.keyVaultSecretsUser)
+    principalId: controlPlaneMiPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // Key Vault Crypto User role for Shim MI
 // Allows the Shim to read public keys for token validation (read-only crypto operations)
 resource kvCryptoUserForShim 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(shimMiPrincipalId) && !empty(kvResourceId)) {
@@ -52,6 +67,19 @@ resource kvCryptoUserForShim 'Microsoft.Authorization/roleAssignments@2022-04-01
   name: guid(kv.id, shimMiPrincipalId, roleIds.keyVaultCryptoUser)
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.keyVaultCryptoUser)
+    principalId: shimMiPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Key Vault Secrets User role for Shim MI
+// Allows the Shim to read its DB DSN and cookie HMAC secrets at runtime
+// via the configuration.secrets[].keyVaultUrl mechanism in shim-aca-app.bicep.
+resource kvSecretsUserForShim 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(shimMiPrincipalId) && !empty(kvResourceId)) {
+  scope: kv
+  name: guid(kv.id, shimMiPrincipalId, roleIds.keyVaultSecretsUser)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.keyVaultSecretsUser)
     principalId: shimMiPrincipalId
     principalType: 'ServicePrincipal'
   }

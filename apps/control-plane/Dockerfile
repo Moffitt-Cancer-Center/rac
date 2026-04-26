@@ -60,6 +60,11 @@ COPY --from=be-builder /app/.venv /app/.venv
 # Copy backend source
 COPY apps/control-plane/backend/src /app/src
 
+# Copy alembic migration assets so `alembic upgrade head` can be run from
+# inside the container via `az containerapp exec` against the deployed PG.
+COPY apps/control-plane/backend/alembic.ini /app/alembic.ini
+COPY apps/control-plane/backend/migrations /app/migrations
+
 # Copy built frontend SPA from fe-builder
 COPY --from=fe-builder /app/frontend/dist /app/src/rac_control_plane/static
 
