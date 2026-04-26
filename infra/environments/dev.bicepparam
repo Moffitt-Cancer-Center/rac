@@ -19,7 +19,10 @@ param idpTenantId = 'f64ec93a-c5a6-4ba3-afca-8b10d684f3c1'
 param pgExtensions = ['uuid-ossp']
 param pgAdminPassword = readEnvironmentVariable('RAC_PG_ADMIN_PASSWORD')
 param appGwTlsCertKvSecretId = readEnvironmentVariable('RAC_APPGW_TLS_CERT_KV_SECRET_ID')
-param controlPlaneIdentityPrincipalId = ''
+// Phase 5 bridge: grant CP MI DNS Zone Contributor so it can create
+// per-app records under the parent zone when provisioning Tier 3 apps.
+// Principal ID belongs to id-rac-controlplane-dev (current dev sub).
+param controlPlaneIdentityPrincipalId = '6e080a59-34ab-445d-9d14-9d51cf2d2138'
 param vnetOctet = 10
 param pgSkuName = 'Standard_B2s'
 param pgSkuTier = 'Burstable'
