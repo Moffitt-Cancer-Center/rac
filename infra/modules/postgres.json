@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "686121623948606645"
+      "templateHash": "13220670587795818714"
     }
   },
   "parameters": {
@@ -89,6 +89,13 @@
         "description": "Geo-redundant backup setting (Enabled or Disabled)"
       }
     },
+    "appDatabaseName": {
+      "type": "string",
+      "defaultValue": "rac",
+      "metadata": {
+        "description": "Application database name to create at deploy time. Created idempotently inside the flexible server."
+      }
+    },
     "tags": {
       "type": "object",
       "metadata": {
@@ -133,6 +140,18 @@
       "properties": {
         "value": "[join(parameters('extensions'), ',')]",
         "source": "user-override"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers/databases",
+      "apiVersion": "2023-06-01-preview",
+      "name": "[format('{0}/{1}', parameters('serverName'), parameters('appDatabaseName'))]",
+      "properties": {
+        "charset": "UTF8",
+        "collation": "en_US.utf8"
       },
       "dependsOn": [
         "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
@@ -220,6 +239,20 @@
         "description": "Postgres server FQDN"
       },
       "value": "[reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName')), '2023-06-01-preview').fullyQualifiedDomainName]"
+    },
+    "appDatabaseName": {
+      "type": "string",
+      "metadata": {
+        "description": "Application database name (matches appDatabaseName param)"
+      },
+      "value": "[parameters('appDatabaseName')]"
+    },
+    "administratorLogin": {
+      "type": "string",
+      "metadata": {
+        "description": "Postgres administrator login (constant: rac_admin)"
+      },
+      "value": "[reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName')), '2023-06-01-preview').administratorLogin]"
     }
   }
 }

@@ -35,12 +35,17 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/* && 
     curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
 
-# Copy dependency files
+# Copy dependency files. uv treats this repo as a workspace whose members
+# include both apps/control-plane/backend and apps/shim, so both
+# pyproject.toml files must be present on disk for `uv sync` to plan
+# successfully against the lockfile — even though we only need the
+# control-plane package itself.
 COPY pyproject.toml uv.lock ./
 COPY apps/control-plane/backend/pyproject.toml apps/control-plane/backend/
+COPY apps/shim/pyproject.toml apps/shim/
 
-# Install dependencies (excluding dev dependencies)
-RUN uv sync --frozen --no-dev
+# Install only the control-plane workspace member's runtime deps.
+RUN uv sync --frozen --no-dev --package rac-control-plane
 
 # ==============================================================================
 # Stage 3: Runtime

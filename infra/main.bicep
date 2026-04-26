@@ -117,6 +117,51 @@ param shimMetricsEnabled bool = true
 @description('OTLP exporter endpoint for the shim (leave empty to disable OTLP export)')
 param shimOtlpEndpoint string = ''
 
+// ===== Control Plane (Phase 2) =====
+
+@description('Deploy the control plane ACA app. Set true once a control-plane image has been pushed to ACR; false on first-deploy when the image is missing.')
+param deployControlPlaneApp bool = false
+
+@description('Entra app registration client ID for the control plane user-facing OIDC flow (required when deployControlPlaneApp=true).')
+param controlPlaneIdpClientId string = ''
+
+@description('Entra app registration client ID for the control plane API / client-credentials flow (required when deployControlPlaneApp=true).')
+param controlPlaneIdpApiClientId string = ''
+
+@description('Postgres login user the control plane authenticates as. Smoke-test default rac_admin uses the bootstrap admin password; a follow-up changes this to a least-privilege rac_app role.')
+param controlPlanePgUser string = 'rac_admin'
+
+@description('Name of the Key Vault secret holding the Postgres password the control plane uses. Defaults to rac-pg-admin-password — operator must seed this in the platform KV (copy from bootstrap KV) before deploying with deployControlPlaneApp=true.')
+param controlPlanePgPasswordSecretName string = 'rac-pg-admin-password'
+
+@description('Institution display name for the control plane SPA / emails')
+param controlPlaneInstitutionName string = ''
+
+@description('Optional brand logo URL for the control plane SPA')
+param controlPlaneBrandLogoUrl string = ''
+
+@description('Approver role (research/leadership stage)')
+param controlPlaneApproverRoleResearch string = 'rac-approver-research'
+
+@description('Approver role (IT stage)')
+param controlPlaneApproverRoleIt string = 'rac-approver-it'
+
+@description('Scan severity gate threshold')
+@allowed(['critical', 'high', 'medium', 'low'])
+param controlPlaneScanSeverityGate string = 'high'
+
+@description('GitHub owner of the rac-pipeline repo (empty until pipeline is wired)')
+param controlPlaneGithubPipelineOwner string = ''
+
+@description('GitHub repo name for the pipeline')
+param controlPlaneGithubPipelineRepo string = 'rac-pipeline'
+
+@description('Enable control-plane Prometheus/OpenTelemetry metrics endpoint')
+param controlPlaneMetricsEnabled bool = true
+
+@description('OTLP endpoint for the control plane (leave empty to disable)')
+param controlPlaneOtlpEndpoint string = ''
+
 // ========== VARIABLES ==========
 
 var commonTags = buildTags(racEnv, {})
@@ -348,7 +393,10 @@ module alerts 'modules/alerts.bicep' = {
     actionGroupEmails: actionGroupEmails
     actionGroupWebhookUri: actionGroupWebhookUri
     shimAppId: shimAppId
-    controlPlaneAppId: controlPlaneAppId
+    // Prefer the freshly-deployed control plane app ID when this run includes
+    // the control plane module; fall back to the param so existing callers
+    // can still pre-seed it across deploys.
+    controlPlaneAppId: controlPlaneAcaApp.?outputs.controlPlaneAppId ?? controlPlaneAppId
     postgresServerId: postgres.outputs.serverId
     kvId: keyVault.outputs.kvId
     logAnalyticsWorkspaceId: logAnalytics.outputs.workspaceId
@@ -387,6 +435,57 @@ module costIngestJob 'modules/cost-ingest-job.bicep' = if (!empty(controlPlaneIm
     imageName: controlPlaneImageName
     managedIdentityResourceId: managedIdentity.outputs.controlPlaneMiResourceId
     registryServer: acr.outputs.acrLoginServer
+    tags: commonTags
+  }
+}
+
+// ========== PHASE 2: CONTROL PLANE ACA APP ==========
+// Deploys only when deployControlPlaneApp is true AND controlPlaneImageName is set.
+// The control plane backs all researcher and admin workflows; scale-to-zero is fine.
+module controlPlaneAcaApp 'modules/control-plane-aca-app.bicep' = if (deployControlPlaneApp && !empty(controlPlaneImageName)) {
+  scope: rg
+  name: 'deploy-control-plane-aca-app'
+  // Wait for KV role assignments so the MI can read the pg password secret
+  // on first reconciliation, and for the storage/blob private endpoint to
+  // be reachable from inside the VNet.
+  dependsOn: [
+    roleAssignmentsKv
+  ]
+  params: {
+    location: location
+    racEnv: racEnv
+    managedEnvironmentId: acaEnvironment.outputs.envId
+    controlPlaneMiResourceId: managedIdentity.outputs.controlPlaneMiResourceId
+    controlPlaneMiClientId: managedIdentity.outputs.controlPlaneMiClientId
+    imageName: controlPlaneImageName
+    registryServer: acr.outputs.acrLoginServer
+    kvUri: keyVault.outputs.kvUri
+    pgHost: postgres.outputs.serverFqdn
+    pgDatabase: postgres.outputs.appDatabaseName
+    pgUser: controlPlanePgUser
+    pgPasswordSecretName: controlPlanePgPasswordSecretName
+    parentDomain: parentDomain
+    institutionName: controlPlaneInstitutionName
+    brandLogoUrl: controlPlaneBrandLogoUrl
+    idpTenantId: idpTenantId
+    idpClientId: controlPlaneIdpClientId
+    idpApiClientId: controlPlaneIdpApiClientId
+    tier3ResourceGroupName: rgTier3.name
+    subscriptionId: subscription().subscriptionId
+    dnsZoneName: parentDomain
+    storageAccountName: storageAccountName
+    blobAccountUrl: blobStorage.outputs.blobEndpoint
+    acrLoginServer: acr.outputs.acrLoginServer
+    acaEnvResourceId: acaEnvironment.outputs.envId
+    appGatewayPublicIp: appGateway.outputs.appGatewayPublicIp
+    scanSeverityGate: controlPlaneScanSeverityGate
+    approverRoleResearch: controlPlaneApproverRoleResearch
+    approverRoleIt: controlPlaneApproverRoleIt
+    pipelineTimeoutMinutes: pipelineTimeoutMinutes
+    githubPipelineOwner: controlPlaneGithubPipelineOwner
+    githubPipelineRepo: controlPlaneGithubPipelineRepo
+    metricsEnabled: controlPlaneMetricsEnabled
+    otlpEndpoint: controlPlaneOtlpEndpoint
     tags: commonTags
   }
 }
@@ -468,3 +567,9 @@ output shimAppId string = shimAcaApp.?outputs.shimAppId ?? ''
 
 @description('Shim ACA internal FQDN (empty when shimImageName was not provided on this deploy)')
 output shimFqdn string = shimAcaApp.?outputs.shimFqdn ?? ''
+
+@description('Control Plane ACA app resource ID (empty when deployControlPlaneApp was false or no image)')
+output controlPlaneAppId string = controlPlaneAcaApp.?outputs.controlPlaneAppId ?? ''
+
+@description('Control Plane ACA internal FQDN (empty when deployControlPlaneApp was false or no image)')
+output controlPlaneFqdn string = controlPlaneAcaApp.?outputs.controlPlaneFqdn ?? ''

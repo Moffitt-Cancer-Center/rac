@@ -5,7 +5,11 @@ Revises:
 Create Date: 2026-04-23
 
 This migration creates:
-- pg_uuidv7 extension (IDEMPOTENT)
+- uuid-ossp extension (IDEMPOTENT) — pg_uuidv7 is not in the Azure
+  Postgres flexible-server allowlist for several regions (eastus2 confirmed
+  2026-04-25), so we use the universally-available uuid-ossp extension
+  and emulate the v7 entry point with a wrapper that calls v4. Trade-off
+  is loss of time-ordering on UUID PKs; acceptable for v1.
 - submission_status ENUM
 - 15 tables as per design
 - Indexes on foreign keys and common filters
@@ -26,18 +30,23 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    # Create extension if not exists
-    op.execute("CREATE EXTENSION IF NOT EXISTS pg_uuidv7;")
+    # Create extension if not exists. We use uuid-ossp because pg_uuidv7
+    # is not in the Azure Postgres flexible-server allowlist for several
+    # regions (eastus2 confirmed 2026-04-25). The uuidv7() wrapper below
+    # keeps the same call site name in column DDL but emits v4 UUIDs.
+    op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
 
-    # Create uuidv7() alias for uuid_generate_v7()
-    # ghcr.io/fboulnois/pg_uuidv7 exposes uuid_generate_v7(), not uuidv7().
-    # Add a uuidv7() wrapper so table DDL and application code can use the shorter name.
+    # Create uuidv7() wrapper that delegates to uuid_generate_v4().
+    # Every column default in this migration uses uuidv7() so the rest of
+    # the file is unchanged; only the implementation behind the name moved.
+    # If we later regain access to pg_uuidv7 in our deployment region we
+    # can change the wrapper body back without touching any DDL.
     op.execute("""
         CREATE OR REPLACE FUNCTION uuidv7()
         RETURNS uuid
         LANGUAGE sql
         VOLATILE STRICT PARALLEL SAFE
-        AS $$ SELECT uuid_generate_v7() $$;
+        AS $$ SELECT uuid_generate_v4() $$;
     """)
 
     # Create submission_status enum via raw DDL — avoids SQLAlchemy's double-create
@@ -336,5 +345,9 @@ def downgrade() -> None:
     # Drop ENUM
     op.execute("DROP TYPE IF EXISTS submission_status;")
 
+    # Drop the wrapper function before the extension. uuidv7() is a
+    # user-defined function and is not removed by DROP EXTENSION.
+    op.execute("DROP FUNCTION IF EXISTS uuidv7();")
+
     # Drop extension (idempotent)
-    op.execute("DROP EXTENSION IF EXISTS pg_uuidv7;")
+    op.execute('DROP EXTENSION IF EXISTS "uuid-ossp";')

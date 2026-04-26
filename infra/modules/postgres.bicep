@@ -36,6 +36,9 @@ param extensions array = ['pg_uuidv7']
 @allowed(['Enabled', 'Disabled'])
 param geoRedundantBackup string = 'Disabled'
 
+@description('Application database name to create at deploy time. Created idempotently inside the flexible server.')
+param appDatabaseName string = 'rac'
+
 @description('Resource tags applied to all resources')
 param tags object
 
@@ -74,6 +77,18 @@ resource postgresConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configuration
   properties: {
     value: join(extensions, ',')
     source: 'user-override'
+  }
+}
+
+// Application database — created at deploy time so the control plane has
+// somewhere to run alembic against on first boot. The default `postgres`
+// db that ships with flexible-server is reserved for system metadata.
+resource appDatabase 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2023-06-01-preview' = {
+  parent: postgresServer
+  name: appDatabaseName
+  properties: {
+    charset: 'UTF8'
+    collation: 'en_US.utf8'
   }
 }
 
@@ -142,3 +157,9 @@ output serverId string = postgresServer.id
 
 @description('Postgres server FQDN')
 output serverFqdn string = postgresServer.properties.fullyQualifiedDomainName
+
+@description('Application database name (matches appDatabaseName param)')
+output appDatabaseName string = appDatabase.name
+
+@description('Postgres administrator login (constant: rac_admin)')
+output administratorLogin string = postgresServer.properties.administratorLogin

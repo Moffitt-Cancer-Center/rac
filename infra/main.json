@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "6520072037257778303"
+      "templateHash": "4467830817297150340"
     }
   },
   "functions": [
@@ -270,6 +270,110 @@
       "defaultValue": "",
       "metadata": {
         "description": "OTLP exporter endpoint for the shim (leave empty to disable OTLP export)"
+      }
+    },
+    "deployControlPlaneApp": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy the control plane ACA app. Set true once a control-plane image has been pushed to ACR; false on first-deploy when the image is missing."
+      }
+    },
+    "controlPlaneIdpClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Entra app registration client ID for the control plane user-facing OIDC flow (required when deployControlPlaneApp=true)."
+      }
+    },
+    "controlPlaneIdpApiClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Entra app registration client ID for the control plane API / client-credentials flow (required when deployControlPlaneApp=true)."
+      }
+    },
+    "controlPlanePgUser": {
+      "type": "string",
+      "defaultValue": "rac_admin",
+      "metadata": {
+        "description": "Postgres login user the control plane authenticates as. Smoke-test default rac_admin uses the bootstrap admin password; a follow-up changes this to a least-privilege rac_app role."
+      }
+    },
+    "controlPlanePgPasswordSecretName": {
+      "type": "string",
+      "defaultValue": "rac-pg-admin-password",
+      "metadata": {
+        "description": "Name of the Key Vault secret holding the Postgres password the control plane uses. Defaults to rac-pg-admin-password — operator must seed this in the platform KV (copy from bootstrap KV) before deploying with deployControlPlaneApp=true."
+      }
+    },
+    "controlPlaneInstitutionName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Institution display name for the control plane SPA / emails"
+      }
+    },
+    "controlPlaneBrandLogoUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional brand logo URL for the control plane SPA"
+      }
+    },
+    "controlPlaneApproverRoleResearch": {
+      "type": "string",
+      "defaultValue": "rac-approver-research",
+      "metadata": {
+        "description": "Approver role (research/leadership stage)"
+      }
+    },
+    "controlPlaneApproverRoleIt": {
+      "type": "string",
+      "defaultValue": "rac-approver-it",
+      "metadata": {
+        "description": "Approver role (IT stage)"
+      }
+    },
+    "controlPlaneScanSeverityGate": {
+      "type": "string",
+      "defaultValue": "high",
+      "allowedValues": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "metadata": {
+        "description": "Scan severity gate threshold"
+      }
+    },
+    "controlPlaneGithubPipelineOwner": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "GitHub owner of the rac-pipeline repo (empty until pipeline is wired)"
+      }
+    },
+    "controlPlaneGithubPipelineRepo": {
+      "type": "string",
+      "defaultValue": "rac-pipeline",
+      "metadata": {
+        "description": "GitHub repo name for the pipeline"
+      }
+    },
+    "controlPlaneMetricsEnabled": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable control-plane Prometheus/OpenTelemetry metrics endpoint"
+      }
+    },
+    "controlPlaneOtlpEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "OTLP endpoint for the control plane (leave empty to disable)"
       }
     }
   },
@@ -1240,7 +1344,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "686121623948606645"
+              "templateHash": "13220670587795818714"
             }
           },
           "parameters": {
@@ -1324,6 +1428,13 @@
                 "description": "Geo-redundant backup setting (Enabled or Disabled)"
               }
             },
+            "appDatabaseName": {
+              "type": "string",
+              "defaultValue": "rac",
+              "metadata": {
+                "description": "Application database name to create at deploy time. Created idempotently inside the flexible server."
+              }
+            },
             "tags": {
               "type": "object",
               "metadata": {
@@ -1368,6 +1479,18 @@
               "properties": {
                 "value": "[join(parameters('extensions'), ',')]",
                 "source": "user-override"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers/databases",
+              "apiVersion": "2023-06-01-preview",
+              "name": "[format('{0}/{1}', parameters('serverName'), parameters('appDatabaseName'))]",
+              "properties": {
+                "charset": "UTF8",
+                "collation": "en_US.utf8"
               },
               "dependsOn": [
                 "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
@@ -1455,6 +1578,20 @@
                 "description": "Postgres server FQDN"
               },
               "value": "[reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName')), '2023-06-01-preview').fullyQualifiedDomainName]"
+            },
+            "appDatabaseName": {
+              "type": "string",
+              "metadata": {
+                "description": "Application database name (matches appDatabaseName param)"
+              },
+              "value": "[parameters('appDatabaseName')]"
+            },
+            "administratorLogin": {
+              "type": "string",
+              "metadata": {
+                "description": "Postgres administrator login (constant: rac_admin)"
+              },
+              "value": "[reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName')), '2023-06-01-preview').administratorLogin]"
             }
           }
         }
@@ -3156,7 +3293,7 @@
             "value": "[parameters('shimAppId')]"
           },
           "controlPlaneAppId": {
-            "value": "[parameters('controlPlaneAppId')]"
+            "value": "[coalesce(tryGet(if(and(parameters('deployControlPlaneApp'), not(empty(parameters('controlPlaneImageName')))), reference('controlPlaneAcaApp'), null()), 'outputs', 'controlPlaneAppId', 'value'), parameters('controlPlaneAppId'))]"
           },
           "postgresServerId": {
             "value": "[reference('postgres').outputs.serverId.value]"
@@ -3504,6 +3641,7 @@
         }
       },
       "dependsOn": [
+        "controlPlaneAcaApp",
         "keyVault",
         "logAnalytics",
         "postgres",
@@ -3844,6 +3982,467 @@
         "acr",
         "managedIdentity",
         "rg"
+      ]
+    },
+    "controlPlaneAcaApp": {
+      "condition": "[and(parameters('deployControlPlaneApp'), not(empty(parameters('controlPlaneImageName'))))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-control-plane-aca-app",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "managedEnvironmentId": {
+            "value": "[reference('acaEnvironment').outputs.envId.value]"
+          },
+          "controlPlaneMiResourceId": {
+            "value": "[reference('managedIdentity').outputs.controlPlaneMiResourceId.value]"
+          },
+          "controlPlaneMiClientId": {
+            "value": "[reference('managedIdentity').outputs.controlPlaneMiClientId.value]"
+          },
+          "imageName": {
+            "value": "[parameters('controlPlaneImageName')]"
+          },
+          "registryServer": {
+            "value": "[reference('acr').outputs.acrLoginServer.value]"
+          },
+          "kvUri": {
+            "value": "[reference('keyVault').outputs.kvUri.value]"
+          },
+          "pgHost": {
+            "value": "[reference('postgres').outputs.serverFqdn.value]"
+          },
+          "pgDatabase": {
+            "value": "[reference('postgres').outputs.appDatabaseName.value]"
+          },
+          "pgUser": {
+            "value": "[parameters('controlPlanePgUser')]"
+          },
+          "pgPasswordSecretName": {
+            "value": "[parameters('controlPlanePgPasswordSecretName')]"
+          },
+          "parentDomain": {
+            "value": "[parameters('parentDomain')]"
+          },
+          "institutionName": {
+            "value": "[parameters('controlPlaneInstitutionName')]"
+          },
+          "brandLogoUrl": {
+            "value": "[parameters('controlPlaneBrandLogoUrl')]"
+          },
+          "idpTenantId": {
+            "value": "[parameters('idpTenantId')]"
+          },
+          "idpClientId": {
+            "value": "[parameters('controlPlaneIdpClientId')]"
+          },
+          "idpApiClientId": {
+            "value": "[parameters('controlPlaneIdpApiClientId')]"
+          },
+          "tier3ResourceGroupName": {
+            "value": "[format('rg-rac-tier3-{0}', parameters('racEnv'))]"
+          },
+          "subscriptionId": {
+            "value": "[subscription().subscriptionId]"
+          },
+          "dnsZoneName": {
+            "value": "[parameters('parentDomain')]"
+          },
+          "storageAccountName": {
+            "value": "[parameters('storageAccountName')]"
+          },
+          "blobAccountUrl": {
+            "value": "[reference('blobStorage').outputs.blobEndpoint.value]"
+          },
+          "acrLoginServer": {
+            "value": "[reference('acr').outputs.acrLoginServer.value]"
+          },
+          "acaEnvResourceId": {
+            "value": "[reference('acaEnvironment').outputs.envId.value]"
+          },
+          "appGatewayPublicIp": {
+            "value": "[reference('appGateway').outputs.appGatewayPublicIp.value]"
+          },
+          "scanSeverityGate": {
+            "value": "[parameters('controlPlaneScanSeverityGate')]"
+          },
+          "approverRoleResearch": {
+            "value": "[parameters('controlPlaneApproverRoleResearch')]"
+          },
+          "approverRoleIt": {
+            "value": "[parameters('controlPlaneApproverRoleIt')]"
+          },
+          "pipelineTimeoutMinutes": {
+            "value": "[parameters('pipelineTimeoutMinutes')]"
+          },
+          "githubPipelineOwner": {
+            "value": "[parameters('controlPlaneGithubPipelineOwner')]"
+          },
+          "githubPipelineRepo": {
+            "value": "[parameters('controlPlaneGithubPipelineRepo')]"
+          },
+          "metricsEnabled": {
+            "value": "[parameters('controlPlaneMetricsEnabled')]"
+          },
+          "otlpEndpoint": {
+            "value": "[parameters('controlPlaneOtlpEndpoint')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "12431053579522809296"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the app resource"
+              }
+            },
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "Deployment environment: dev | staging | prod"
+              }
+            },
+            "managedEnvironmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA managed environment resource ID"
+              }
+            },
+            "controlPlaneMiResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Control Plane user-assigned managed identity resource ID"
+              }
+            },
+            "controlPlaneMiClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "Control Plane user-assigned managed identity client ID (used by DefaultAzureCredential inside the container)"
+              }
+            },
+            "imageName": {
+              "type": "string",
+              "metadata": {
+                "description": "Full image reference, e.g. racdevacrczo2xbgcnq.azurecr.io/rac-control-plane:dev-001"
+              }
+            },
+            "registryServer": {
+              "type": "string",
+              "metadata": {
+                "description": "ACR login server, e.g. racdevacrczo2xbgcnq.azurecr.io"
+              }
+            },
+            "kvUri": {
+              "type": "string",
+              "metadata": {
+                "description": "Platform Key Vault URI, e.g. https://kv-rac-xxxx-dev.vault.azure.net/"
+              }
+            },
+            "pgHost": {
+              "type": "string",
+              "metadata": {
+                "description": "Postgres server FQDN, e.g. rac-dev-pg-xxx.postgres.database.azure.com"
+              }
+            },
+            "pgDatabase": {
+              "type": "string",
+              "metadata": {
+                "description": "Postgres application database name (e.g. rac)"
+              }
+            },
+            "pgUser": {
+              "type": "string",
+              "metadata": {
+                "description": "Postgres login user (smoke-test default: rac_admin from bootstrap)"
+              }
+            },
+            "pgPasswordSecretName": {
+              "type": "string",
+              "defaultValue": "rac-pg-admin-password",
+              "metadata": {
+                "description": "Name of the Key Vault secret holding the Postgres password (lives in platform KV; operator seeds before deploy by copying from bootstrap KV)."
+              }
+            },
+            "parentDomain": {
+              "type": "string",
+              "metadata": {
+                "description": "Parent DNS domain, e.g. rac-dev.rac.checkwithscience.com"
+              }
+            },
+            "institutionName": {
+              "type": "string",
+              "metadata": {
+                "description": "Institution display name, surfaced in the SPA and emails"
+              }
+            },
+            "brandLogoUrl": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Optional brand logo URL"
+              }
+            },
+            "idpTenantId": {
+              "type": "string",
+              "metadata": {
+                "description": "Entra tenant ID for OIDC"
+              }
+            },
+            "idpClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "Entra app registration client ID for the user-facing OIDC flow"
+              }
+            },
+            "idpApiClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "Entra app registration client ID for the API / client-credentials flow"
+              }
+            },
+            "tier3ResourceGroupName": {
+              "type": "string",
+              "metadata": {
+                "description": "Tier 3 dynamic apps resource group name"
+              }
+            },
+            "subscriptionId": {
+              "type": "string",
+              "defaultValue": "[subscription().subscriptionId]",
+              "metadata": {
+                "description": "Subscription ID where Tier 3 apps live"
+              }
+            },
+            "dnsZoneName": {
+              "type": "string",
+              "metadata": {
+                "description": "DNS zone name (parent zone the control plane provisions records under)"
+              }
+            },
+            "storageAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage account name where researcher uploads are staged"
+              }
+            },
+            "blobAccountUrl": {
+              "type": "string",
+              "metadata": {
+                "description": "Blob account URL for the storage account"
+              }
+            },
+            "filesStorageAccountKeySecretName": {
+              "type": "string",
+              "defaultValue": "files-storage-account-key",
+              "metadata": {
+                "description": "Files-storage account key KV secret name (for ACA volume mounts on Tier 3)"
+              }
+            },
+            "acrLoginServer": {
+              "type": "string",
+              "metadata": {
+                "description": "ACR login server (also passed as RAC_ACR_LOGIN_SERVER env)"
+              }
+            },
+            "acaEnvResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA environment resource ID (for Tier 3 provisioning)"
+              }
+            },
+            "appGatewayPublicIp": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "App Gateway public IP (informational, used by control plane to render researcher URLs)"
+              }
+            },
+            "scanSeverityGate": {
+              "type": "string",
+              "defaultValue": "high",
+              "allowedValues": [
+                "critical",
+                "high",
+                "medium",
+                "low"
+              ],
+              "metadata": {
+                "description": "Scan severity gate threshold for approvals"
+              }
+            },
+            "approverRoleResearch": {
+              "type": "string",
+              "defaultValue": "rac-approver-research",
+              "metadata": {
+                "description": "Approver role name for the research/leadership stage"
+              }
+            },
+            "approverRoleIt": {
+              "type": "string",
+              "defaultValue": "rac-approver-it",
+              "metadata": {
+                "description": "Approver role name for the IT stage"
+              }
+            },
+            "pipelineTimeoutMinutes": {
+              "type": "int",
+              "defaultValue": 120,
+              "metadata": {
+                "description": "Pipeline timeout in minutes"
+              }
+            },
+            "githubPipelineOwner": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "GitHub owner of the rac-pipeline repo"
+              }
+            },
+            "githubPipelineRepo": {
+              "type": "string",
+              "defaultValue": "rac-pipeline",
+              "metadata": {
+                "description": "GitHub repo name for the pipeline"
+              }
+            },
+            "metricsEnabled": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Enable Prometheus/OpenTelemetry metrics endpoint"
+              }
+            },
+            "otlpEndpoint": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "OTLP exporter endpoint (leave empty to disable OTLP export)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/containerApps",
+              "apiVersion": "2024-03-01",
+              "name": "[format('rac-control-plane-{0}', parameters('racEnv'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('controlPlaneMiResourceId'))]": {}
+                }
+              },
+              "properties": {
+                "environmentId": "[parameters('managedEnvironmentId')]",
+                "configuration": {
+                  "ingress": {
+                    "external": false,
+                    "targetPort": 8080,
+                    "transport": "http"
+                  },
+                  "registries": [
+                    {
+                      "server": "[parameters('registryServer')]",
+                      "identity": "[parameters('controlPlaneMiResourceId')]"
+                    }
+                  ],
+                  "secrets": [
+                    {
+                      "name": "[parameters('pgPasswordSecretName')]",
+                      "keyVaultUrl": "[format('{0}secrets/{1}', parameters('kvUri'), parameters('pgPasswordSecretName'))]",
+                      "identity": "[parameters('controlPlaneMiResourceId')]"
+                    }
+                  ]
+                },
+                "template": {
+                  "containers": [
+                    {
+                      "name": "control-plane",
+                      "image": "[parameters('imageName')]",
+                      "resources": {
+                        "cpu": "[json('0.5')]",
+                        "memory": "1Gi"
+                      },
+                      "env": "[concat(createArray(createObject('name', 'RAC_PG_PASSWORD', 'secretRef', parameters('pgPasswordSecretName')), createObject('name', 'RAC_ENV', 'value', parameters('racEnv')), createObject('name', 'RAC_INSTITUTION_NAME', 'value', parameters('institutionName')), createObject('name', 'RAC_PARENT_DOMAIN', 'value', parameters('parentDomain')), createObject('name', 'RAC_BRAND_LOGO_URL', 'value', parameters('brandLogoUrl')), createObject('name', 'RAC_IDP_TENANT_ID', 'value', parameters('idpTenantId')), createObject('name', 'RAC_IDP_CLIENT_ID', 'value', parameters('idpClientId')), createObject('name', 'RAC_IDP_API_CLIENT_ID', 'value', parameters('idpApiClientId')), createObject('name', 'RAC_PG_HOST', 'value', parameters('pgHost')), createObject('name', 'RAC_PG_PORT', 'value', '5432'), createObject('name', 'RAC_PG_DB', 'value', parameters('pgDatabase')), createObject('name', 'RAC_PG_USER', 'value', parameters('pgUser')), createObject('name', 'RAC_PG_SSL_MODE', 'value', 'require'), createObject('name', 'RAC_KV_URI', 'value', parameters('kvUri')), createObject('name', 'RAC_BLOB_ACCOUNT_URL', 'value', parameters('blobAccountUrl')), createObject('name', 'RAC_ACR_LOGIN_SERVER', 'value', parameters('acrLoginServer')), createObject('name', 'RAC_ACA_ENV_RESOURCE_ID', 'value', parameters('acaEnvResourceId')), createObject('name', 'RAC_SUBSCRIPTION_ID', 'value', parameters('subscriptionId')), createObject('name', 'RAC_RESOURCE_GROUP', 'value', parameters('tier3ResourceGroupName')), createObject('name', 'RAC_AZURE_LOCATION', 'value', parameters('location')), createObject('name', 'RAC_DNS_ZONE_NAME', 'value', parameters('dnsZoneName')), createObject('name', 'RAC_FILES_STORAGE_ACCOUNT_NAME', 'value', parameters('storageAccountName')), createObject('name', 'RAC_FILES_STORAGE_ACCOUNT_KEY_KV_SECRET_NAME', 'value', parameters('filesStorageAccountKeySecretName')), createObject('name', 'RAC_MANAGED_IDENTITY_RESOURCE_ID', 'value', parameters('controlPlaneMiResourceId')), createObject('name', 'RAC_CONTROLPLANE_MANAGED_IDENTITY_CLIENT_ID', 'value', parameters('controlPlaneMiClientId')), createObject('name', 'RAC_APP_GATEWAY_PUBLIC_IP', 'value', parameters('appGatewayPublicIp')), createObject('name', 'RAC_SCAN_SEVERITY_GATE', 'value', parameters('scanSeverityGate')), createObject('name', 'RAC_APPROVER_ROLE_RESEARCH', 'value', parameters('approverRoleResearch')), createObject('name', 'RAC_APPROVER_ROLE_IT', 'value', parameters('approverRoleIt')), createObject('name', 'RAC_PIPELINE_TIMEOUT_MINUTES', 'value', string(parameters('pipelineTimeoutMinutes'))), createObject('name', 'RAC_GH_PIPELINE_OWNER', 'value', parameters('githubPipelineOwner')), createObject('name', 'RAC_GH_PIPELINE_REPO', 'value', parameters('githubPipelineRepo')), createObject('name', 'RAC_METRICS_ENABLED', 'value', string(parameters('metricsEnabled'))), createObject('name', 'AZURE_CLIENT_ID', 'value', parameters('controlPlaneMiClientId'))), if(empty(parameters('otlpEndpoint')), createArray(), createArray(createObject('name', 'RAC_OTLP_ENDPOINT', 'value', parameters('otlpEndpoint')))))]"
+                    }
+                  ],
+                  "scale": {
+                    "minReplicas": 0,
+                    "maxReplicas": 3,
+                    "rules": [
+                      {
+                        "name": "http-scaler",
+                        "http": {
+                          "metadata": {
+                            "concurrentRequests": "50"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "controlPlaneAppId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the control plane Container App"
+              },
+              "value": "[resourceId('Microsoft.App/containerApps', format('rac-control-plane-{0}', parameters('racEnv')))]"
+            },
+            "controlPlaneFqdn": {
+              "type": "string",
+              "metadata": {
+                "description": "Internal FQDN of the control plane (used as App Gateway backend target if/when host-routed)"
+              },
+              "value": "[reference(resourceId('Microsoft.App/containerApps', format('rac-control-plane-{0}', parameters('racEnv'))), '2024-03-01').configuration.ingress.fqdn]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "acaEnvironment",
+        "acr",
+        "appGateway",
+        "blobStorage",
+        "keyVault",
+        "managedIdentity",
+        "postgres",
+        "rg",
+        "rgTier3",
+        "roleAssignmentsKv"
       ]
     },
     "shimAcaApp": {
@@ -4424,6 +5023,20 @@
         "description": "Shim ACA internal FQDN (empty when shimImageName was not provided on this deploy)"
       },
       "value": "[coalesce(tryGet(if(not(empty(parameters('shimImageName'))), reference('shimAcaApp'), null()), 'outputs', 'shimFqdn', 'value'), '')]"
+    },
+    "controlPlaneAppId": {
+      "type": "string",
+      "metadata": {
+        "description": "Control Plane ACA app resource ID (empty when deployControlPlaneApp was false or no image)"
+      },
+      "value": "[coalesce(tryGet(if(and(parameters('deployControlPlaneApp'), not(empty(parameters('controlPlaneImageName')))), reference('controlPlaneAcaApp'), null()), 'outputs', 'controlPlaneAppId', 'value'), '')]"
+    },
+    "controlPlaneFqdn": {
+      "type": "string",
+      "metadata": {
+        "description": "Control Plane ACA internal FQDN (empty when deployControlPlaneApp was false or no image)"
+      },
+      "value": "[coalesce(tryGet(if(and(parameters('deployControlPlaneApp'), not(empty(parameters('controlPlaneImageName')))), reference('controlPlaneAcaApp'), null()), 'outputs', 'controlPlaneFqdn', 'value'), '')]"
     }
   }
 }

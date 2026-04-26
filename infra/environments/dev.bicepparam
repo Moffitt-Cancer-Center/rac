@@ -35,3 +35,15 @@ param controlPlaneAppId = ''
 param pipelineTimeoutMinutes = 120
 param kvEnablePurgeProtection = false
 param kvSoftDeleteRetentionInDays = 7
+
+// ===== Phase 2: Control Plane =====
+// Set deployControlPlaneApp=true once the image has been pushed to ACR and
+// the operator has seeded `rac-pg-admin-password` in the platform KV.
+param controlPlaneImageName = 'racdevacrczo2xbgcnq.azurecr.io/rac-control-plane:dev-001'
+param deployControlPlaneApp = true
+param controlPlaneIdpClientId = '3d0fb935-d02b-430a-9561-adb20633fbd4'
+param controlPlaneIdpApiClientId = 'ac3d112d-fde7-4f37-812f-b911743698af'
+param controlPlaneInstitutionName = 'RAC Demo (checkwithscience.com)'
+param controlPlaneScanSeverityGate = 'high'
+param controlPlaneApproverRoleResearch = 'rac-approver-research'
+param controlPlaneApproverRoleIt = 'rac-approver-it'
