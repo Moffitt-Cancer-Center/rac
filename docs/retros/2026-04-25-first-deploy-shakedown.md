@@ -159,9 +159,55 @@ plane and Phase 6 shim are now both live with `/health` and
   own KV-stored password (today's smoke-test posture is over-privileged).
 - Tighten control-plane MI scope (currently RG-Contributor; should be
   per-resource grants only).
-- Phase 5 bridge re-deploy so `rac-dev.rac.checkwithscience.com` actually
-  routes (DNS Zone Contributor on the child zone).
 - Flip `deployCustomDomain=true` on Front Door once a real cert is in
-  place.
+  place (still gated; `*.rac-dev.rac.checkwithscience.com` not yet
+  publicly reachable, only via SNI/Host-header trick to the AppGw IP).
 - Flip `deployTelemetryAlerts=true` once logs have flowed long enough for
   the referenced columns to exist.
+
+## Addendum — 2026-04-27 (end-to-end AppGw → Shim)
+
+After Phase 2 + Phase 6 came up green, App Gateway probes still 502'd. A
+few more bugs surfaced before traffic flowed end-to-end:
+
+- **Phase 5 bridge** (DNS Zone Contributor for the control-plane MI on
+  the parent DNS zone) landed cleanly via `controlPlaneIdentityPrincipalId`
+  in `dev.bicepparam`. Prerequisite for Tier 3 record provisioning later.
+- **No private DNS zone for the ACA env's default domain.** Internal ACA
+  envs (`vnet.internal=true`) don't auto-create one; the platform VNet
+  couldn't resolve `*.{defaultDomain}` so AppGw probes returned `Unknown`
+  health (no DNS). New module `aca-internal-dns.bicep` creates the zone,
+  links it to the VNet, and adds a wildcard A record at the apex pointing
+  at the env's static IP. Lives in its own module because the zone name
+  (= `defaultDomain`) is a runtime-computed property — Bicep BCP120
+  forbids using it as a resource name in the same module that produces
+  it, but accepts it across module boundaries.
+- **AppGw default probe (`GET /`) hits shim's `_handle` route**, which
+  tries to extract a slug from the probe's Host header (the ACA internal
+  FQDN), fails, and returns 404. Configured a custom probe targeting
+  `/_shim/health` (always 200).
+- **AppGw v2 probe gotcha**: setting both `probe.host` and
+  `pickHostNameFromBackendHttpSettings: true` is rejected with
+  `InvalidTemplateDeployment`. Pick one. We use the explicit `probe.host`
+  value — `pickHostNameFromBackendHttpSettings` chained from
+  `pickHostNameFromBackendAddress` did not propagate the FQDN through to
+  the probe in practice; the probe kept hitting the env with a mismatched
+  Host header.
+- **`ingress.external: false` on the shim was the load-bearing bug.**
+  ACA's ingress semantics:
+  - `env internal=true + app external=false` → reachable ONLY from inside
+    the ACA env (other apps in the same env can hit it). VNet-resident
+    callers like App Gateway land on the env's catchall and get 404.
+  - `env internal=true + app external=true` → reachable from anywhere in
+    the VNet; still NOT reachable from the public internet because the
+    env itself is internal. This is the documented "VNet-private
+    exposure" pattern and is what we want.
+  Flipping the shim to `external: true` simultaneously made it
+  VNet-reachable AND changed its FQDN from
+  `rac-shim-dev.internal.{defaultDomain}` to `rac-shim-dev.{defaultDomain}`
+  (the `.internal.` segment dropped). The apex wildcard A record now
+  matches naturally.
+- Verified end-to-end via SNI/Host-header trick — `curl -k --resolve
+  smoke.rac-dev.rac.checkwithscience.com:443:<appgw-ip> https://smoke.rac-dev.rac.checkwithscience.com/_shim/health`
+  returns `HTTP 200 ok` in ~120ms. Front Door → AppGw chain not yet
+  validated (still gated on `deployCustomDomain` + real cert).
