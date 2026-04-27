@@ -77,19 +77,19 @@ resource shimApp 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     environmentId: managedEnvironmentId
     configuration: {
-      // Internal ingress: App Gateway is the public boundary; the shim itself
-      // does not need an external ingress endpoint.
+      // ACA-app ingress is `external: true`, but because the parent ACA
+      // managed environment is itself internal-only (`vnet.internal=true`),
+      // the shim is still private to the VNet — it just becomes reachable
+      // from non-ACA subnets in the same VNet (App Gateway in particular).
       //
-      // TOPOLOGY REQUIREMENT: because external=false, the shim's FQDN is only
-      // resolvable inside the VNet the ACA managed environment is deployed to.
-      // The Application Gateway (modules/app-gateway.bicep) backend pool points
-      // at this FQDN and therefore MUST be deployed in the same VNet (or one
-      // peered with DNS resolution). If the two live in different VNets without
-      // Private Link/peering, App Gateway backend health probes will fail and
-      // all traffic will return 502. This is verified operationally in the
-      // bootstrap runbook's post-deploy health-probe step.
+      // `external: false` would scope the shim to *inside the ACA env only*
+      // (other apps in the same env can reach it, but no other VNet
+      // resource can), which causes AppGw probes to land on the env's
+      // catchall route and come back as 404. The combination
+      //   env internal=true + app external=true
+      // is the documented "VNet-internal exposure" pattern.
       ingress: {
-        external: false
+        external: true
         targetPort: 8080
         transport: 'http'
       }

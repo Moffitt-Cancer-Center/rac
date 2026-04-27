@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "12168537418106820014"
+      "templateHash": "1034127280773738946"
     }
   },
   "parameters": {
@@ -140,7 +140,7 @@
         "environmentId": "[parameters('managedEnvironmentId')]",
         "configuration": {
           "ingress": {
-            "external": false,
+            "external": true,
             "targetPort": 8080,
             "transport": "http"
           },
