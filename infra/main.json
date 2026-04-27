@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "12102311368820567176"
+      "templateHash": "7411426643870378291"
     }
   },
   "functions": [
@@ -2020,6 +2020,114 @@
         "rg"
       ]
     },
+    "acaInternalDns": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-aca-internal-dns",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "defaultDomain": {
+            "value": "[reference('acaEnvironment').outputs.envDefaultDomain.value]"
+          },
+          "staticIp": {
+            "value": "[reference('acaEnvironment').outputs.envStaticIp.value]"
+          },
+          "vnetId": {
+            "value": "[reference('network').outputs.vnetId.value]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "9861008176244438127"
+            }
+          },
+          "parameters": {
+            "defaultDomain": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA env default domain, e.g. \"happyfield-f43dfd30.eastus2.azurecontainerapps.io\". Pass aca-env.outputs.envDefaultDomain."
+              }
+            },
+            "staticIp": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA env static IP. Pass aca-env.outputs.envStaticIp."
+              }
+            },
+            "vnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet resource ID to link the private DNS zone to."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags applied to all resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "[parameters('defaultDomain')]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', parameters('defaultDomain'), 'link-aca')]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[parameters('vnetId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', parameters('defaultDomain'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/A",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', parameters('defaultDomain'), '*')]",
+              "properties": {
+                "ttl": 3600,
+                "aRecords": [
+                  {
+                    "ipv4Address": "[parameters('staticIp')]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', parameters('defaultDomain'))]"
+              ]
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "acaEnvironment",
+        "network",
+        "rg"
+      ]
+    },
     "dnsZone": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
@@ -2266,7 +2374,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "6147900173173532157"
+              "templateHash": "8646220992825403456"
             }
           },
           "parameters": {
@@ -2445,7 +2553,29 @@
                       "cookieBasedAffinity": "Disabled",
                       "requestTimeout": 120,
                       "pickHostNameFromBackendAddress": true,
-                      "probeEnabled": false
+                      "probeEnabled": true,
+                      "probe": {
+                        "id": "[format('{0}/probes/shimHealthProbe', variables('appGwId'))]"
+                      }
+                    }
+                  }
+                ],
+                "probes": [
+                  {
+                    "name": "shimHealthProbe",
+                    "properties": {
+                      "protocol": "Https",
+                      "path": "/_shim/health",
+                      "host": "placeholder",
+                      "pickHostNameFromBackendHttpSettings": true,
+                      "interval": 30,
+                      "timeout": 10,
+                      "unhealthyThreshold": 3,
+                      "match": {
+                        "statusCodes": [
+                          "200-399"
+                        ]
+                      }
                     }
                   }
                 ],

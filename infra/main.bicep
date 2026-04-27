@@ -287,6 +287,22 @@ module acaEnvironment 'modules/aca-env.bicep' = {
   }
 }
 
+// Private DNS zone for the ACA env's internal default domain so App
+// Gateway can resolve `*.{defaultDomain}` to the env's static IP. Lives
+// in a separate module because the zone name (= defaultDomain) is a
+// runtime-computed property of the ACA env (BCP120 forbids using it as
+// a resource name inside the same module).
+module acaInternalDns 'modules/aca-internal-dns.bicep' = {
+  scope: rg
+  name: 'deploy-aca-internal-dns'
+  params: {
+    defaultDomain: acaEnvironment.outputs.envDefaultDomain
+    staticIp: acaEnvironment.outputs.envStaticIp
+    vnetId: network.outputs.vnetId
+    tags: commonTags
+  }
+}
+
 module dnsZone 'modules/dns-zone.bicep' = {
   scope: rg
   name: 'deploy-dnszone'

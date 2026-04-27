@@ -149,7 +149,31 @@ resource appGateway 'Microsoft.Network/applicationGateways@2023-11-01' = {
           cookieBasedAffinity: 'Disabled'
           requestTimeout: 120
           pickHostNameFromBackendAddress: true
-          probeEnabled: false
+          probeEnabled: true
+          probe: {
+            // Custom probe to /_shim/health. The default probe (GET /) hits
+            // the shim's `_handle` route which performs slug-from-host lookup
+            // against the probe's Host header (the ACA internal FQDN), fails,
+            // and returns a 404 — making AppGw mark the backend Unhealthy.
+            id: '${appGwId}/probes/shimHealthProbe'
+          }
+        }
+      }
+    ]
+    probes: [
+      {
+        name: 'shimHealthProbe'
+        properties: {
+          protocol: 'Https'
+          path: '/_shim/health'
+          host: 'placeholder'  // overridden by pickHostNameFromBackendAddress
+          pickHostNameFromBackendHttpSettings: true
+          interval: 30
+          timeout: 10
+          unhealthyThreshold: 3
+          match: {
+            statusCodes: ['200-399']
+          }
         }
       }
     ]

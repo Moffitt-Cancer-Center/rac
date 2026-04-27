@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "6147900173173532157"
+      "templateHash": "8646220992825403456"
     }
   },
   "parameters": {
@@ -184,7 +184,29 @@
               "cookieBasedAffinity": "Disabled",
               "requestTimeout": 120,
               "pickHostNameFromBackendAddress": true,
-              "probeEnabled": false
+              "probeEnabled": true,
+              "probe": {
+                "id": "[format('{0}/probes/shimHealthProbe', variables('appGwId'))]"
+              }
+            }
+          }
+        ],
+        "probes": [
+          {
+            "name": "shimHealthProbe",
+            "properties": {
+              "protocol": "Https",
+              "path": "/_shim/health",
+              "host": "placeholder",
+              "pickHostNameFromBackendHttpSettings": true,
+              "interval": 30,
+              "timeout": 10,
+              "unhealthyThreshold": 3,
+              "match": {
+                "statusCodes": [
+                  "200-399"
+                ]
+              }
             }
           }
         ],
