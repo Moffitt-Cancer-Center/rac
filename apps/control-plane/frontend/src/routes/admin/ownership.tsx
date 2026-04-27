@@ -6,9 +6,11 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router';
+import { requireAuth } from '@/lib/auth-guard';
 import { FlagsPanel } from '@/features/admin/ownership/flags-panel';
 
 export const Route = createFileRoute('/admin/ownership')({
+  beforeLoad: requireAuth,
   component: AdminOwnershipPage,
 });
 

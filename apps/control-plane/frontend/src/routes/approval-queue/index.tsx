@@ -9,9 +9,11 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router';
+import { requireAuth } from '@/lib/auth-guard';
 import { ApprovalQueue } from '@/features/approval-queue';
 
 export const Route = createFileRoute('/approval-queue/')({
+  beforeLoad: requireAuth,
   component: ApprovalQueuePage,
 });
 

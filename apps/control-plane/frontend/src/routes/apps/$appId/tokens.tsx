@@ -1,11 +1,13 @@
 // pattern: Imperative Shell — route component for app token management.
 import { useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
+import { requireAuth } from '@/lib/auth-guard';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MintDialog } from '@/features/tokens/mint-dialog';
 import { TokensTable } from '@/features/tokens/tokens-table';
 
 export const Route = createFileRoute('/apps/$appId/tokens')({
+  beforeLoad: requireAuth,
   component: AppTokensPage,
 });
 

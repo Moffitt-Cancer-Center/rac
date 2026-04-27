@@ -1,9 +1,11 @@
 // pattern: Imperative Shell — route component for app access log viewer.
 import { createFileRoute } from '@tanstack/react-router';
+import { requireAuth } from '@/lib/auth-guard';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AccessLogViewer } from '@/features/access-log/access-log-viewer';
 
 export const Route = createFileRoute('/apps/$appId/access-log')({
+  beforeLoad: requireAuth,
   component: AppAccessLogPage,
 });
 

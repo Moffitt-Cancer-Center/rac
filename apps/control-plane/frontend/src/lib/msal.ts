@@ -14,7 +14,7 @@ const clientId = import.meta.env.VITE_FRONTEND_CLIENT_ID;
 // the full scope (e.g. `api://<guid>/submit`) via VITE_API_SCOPE, or just
 // the API app's client ID via VITE_API_APP_ID and the canonical
 // `api://<id>/submit` form is built here.
-const apiScope = import.meta.env.VITE_API_SCOPE
+export const apiScope = import.meta.env.VITE_API_SCOPE
   || (import.meta.env.VITE_API_APP_ID
     ? `api://${import.meta.env.VITE_API_APP_ID}/submit`
     : '');

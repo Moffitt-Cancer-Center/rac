@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SigninRouteImport } from './routes/signin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SubmissionsIndexRouteImport } from './routes/submissions/index'
 import { Route as ApprovalQueueIndexRouteImport } from './routes/approval-queue/index'
@@ -23,6 +24,11 @@ import { Route as AppsAppIdTokensRouteImport } from './routes/apps/$appId/tokens
 import { Route as AppsAppIdAccessModeRouteImport } from './routes/apps/$appId/access-mode'
 import { Route as AppsAppIdAccessLogRouteImport } from './routes/apps/$appId/access-log'
 
+const SigninRoute = SigninRouteImport.update({
+  id: '/signin',
+  path: '/signin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -93,6 +99,7 @@ const AppsAppIdAccessLogRoute = AppsAppIdAccessLogRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/signin': typeof SigninRoute
   '/admin/cost': typeof AdminCostRoute
   '/admin/ownership': typeof AdminOwnershipRoute
   '/admin/provisioning': typeof AdminProvisioningRoute
@@ -108,6 +115,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/signin': typeof SigninRoute
   '/admin/cost': typeof AdminCostRoute
   '/admin/ownership': typeof AdminOwnershipRoute
   '/admin/provisioning': typeof AdminProvisioningRoute
@@ -124,6 +132,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/signin': typeof SigninRoute
   '/admin/cost': typeof AdminCostRoute
   '/admin/ownership': typeof AdminOwnershipRoute
   '/admin/provisioning': typeof AdminProvisioningRoute
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/signin'
     | '/admin/cost'
     | '/admin/ownership'
     | '/admin/provisioning'
@@ -156,6 +166,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/signin'
     | '/admin/cost'
     | '/admin/ownership'
     | '/admin/provisioning'
@@ -171,6 +182,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/signin'
     | '/admin/cost'
     | '/admin/ownership'
     | '/admin/provisioning'
@@ -187,6 +199,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SigninRoute: typeof SigninRoute
   AdminCostRoute: typeof AdminCostRoute
   AdminOwnershipRoute: typeof AdminOwnershipRoute
   AdminProvisioningRoute: typeof AdminProvisioningRoute
@@ -203,6 +216,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/signin': {
+      id: '/signin'
+      path: '/signin'
+      fullPath: '/signin'
+      preLoaderRoute: typeof SigninRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -299,6 +319,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SigninRoute: SigninRoute,
   AdminCostRoute: AdminCostRoute,
   AdminOwnershipRoute: AdminOwnershipRoute,
   AdminProvisioningRoute: AdminProvisioningRoute,

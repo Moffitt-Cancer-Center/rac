@@ -1,10 +1,12 @@
 import { useRef } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { requireAuth } from '@/lib/auth-guard';
 import { NewSubmissionForm } from '@/features/submissions/new-submission-form';
 import { createSubmission } from '@/lib/api';
 import type { SubmissionCreateRequest } from '@/features/submissions/schemas';
 
 export const Route = createFileRoute('/submissions/new')({
+  beforeLoad: requireAuth,
   component: NewSubmissionPage,
 });
 

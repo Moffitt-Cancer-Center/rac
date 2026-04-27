@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
+import { requireAuth } from '@/lib/auth-guard';
 import { useQuery } from '@tanstack/react-query';
 import { getSubmission } from '@/lib/api';
 import { ScanFindingsView } from '@/features/submissions/scan-findings-view';
@@ -6,6 +7,7 @@ import { NudgesPanel } from '@/features/nudges/nudges-panel';
 import type { ScanResult } from '@/features/submissions/scan-findings-view';
 
 export const Route = createFileRoute('/submissions/$submissionId')({
+  beforeLoad: requireAuth,
   component: SubmissionDetailPage,
 });
 

@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
+import { requireAuth } from '@/lib/auth-guard';
 import { SubmissionsList } from '@/features/submissions/submissions-list';
 
 export const Route = createFileRoute('/submissions/')({
+  beforeLoad: requireAuth,
   component: SubmissionsPage,
 });
 

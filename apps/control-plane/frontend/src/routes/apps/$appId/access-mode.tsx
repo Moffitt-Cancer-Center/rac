@@ -1,9 +1,11 @@
 // pattern: Imperative Shell — admin-only route for access mode toggle.
 import { createFileRoute, redirect } from '@tanstack/react-router';
+import { requireAuth } from '@/lib/auth-guard';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AccessModeToggleCard } from '@/features/admin/access-mode/toggle-card';
 
 export const Route = createFileRoute('/apps/$appId/access-mode')({
+  beforeLoad: requireAuth,
   component: AppAccessModePage,
 });
 

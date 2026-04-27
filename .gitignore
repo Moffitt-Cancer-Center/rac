@@ -14,8 +14,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# `lib/` and `lib64/` come from the standard Python template and would catch
+# our frontend `src/lib/`. Anchor them to top-level to avoid that.
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -217,3 +219,4 @@ node_modules/
 # AWS CLI install scratch — installed system-wide at /usr/local/bin/aws
 aws/
 awscliv2.zip
+.handoff.md

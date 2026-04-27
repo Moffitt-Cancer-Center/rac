@@ -8,11 +8,13 @@
  */
 
 import { createFileRoute, Link } from '@tanstack/react-router';
+import { requireAuth } from '@/lib/auth-guard';
 import { useQuery } from '@tanstack/react-query';
 import { getSubmissionDetail, getScanResult, type ApprovalStage } from '@/features/approval-queue/api';
 import { SubmissionReview } from '@/features/approval-queue/submission-review';
 
 export const Route = createFileRoute('/approval-queue/$submissionId')({
+  beforeLoad: requireAuth,
   component: ApprovalQueueDetailPage,
 });
 
