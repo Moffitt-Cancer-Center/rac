@@ -166,12 +166,14 @@ resource appGateway 'Microsoft.Network/applicationGateways@2023-11-01' = {
         properties: {
           protocol: 'Https'
           path: '/_shim/health'
-          // `host` is mutually exclusive with `pickHostNameFromBackendHttpSettings`;
-          // ARM rejects the template if both are set. Inheriting from the
-          // backend HTTP settings (which itself uses pickHostNameFromBackendAddress)
-          // means the probe Host header matches the SNI hostname AppGw uses for
-          // the actual proxy request.
-          pickHostNameFromBackendHttpSettings: true
+          // Set the host explicitly to the shim's internal FQDN. The
+          // pickHostNameFromBackendHttpSettings → pickHostNameFromBackendAddress
+          // chain didn't propagate the host through to the probe in
+          // practice on AppGw v2 — probe kept hitting the backend with a
+          // mismatched Host and getting 404 from the ACA env's frontend.
+          // Skipped (with a placeholder) when shimFqdn is empty so the
+          // first-deploy gateway-only path doesn't break.
+          host: empty(shimFqdn) ? 'shim.internal.${location}.azurecontainerapps.io' : shimFqdn
           interval: 30
           timeout: 10
           unhealthyThreshold: 3
