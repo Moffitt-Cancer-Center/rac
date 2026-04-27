@@ -166,7 +166,11 @@ resource appGateway 'Microsoft.Network/applicationGateways@2023-11-01' = {
         properties: {
           protocol: 'Https'
           path: '/_shim/health'
-          host: 'placeholder'  // overridden by pickHostNameFromBackendAddress
+          // `host` is mutually exclusive with `pickHostNameFromBackendHttpSettings`;
+          // ARM rejects the template if both are set. Inheriting from the
+          // backend HTTP settings (which itself uses pickHostNameFromBackendAddress)
+          // means the probe Host header matches the SNI hostname AppGw uses for
+          // the actual proxy request.
           pickHostNameFromBackendHttpSettings: true
           interval: 30
           timeout: 10
