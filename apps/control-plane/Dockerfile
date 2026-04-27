@@ -10,6 +10,29 @@ FROM node:20-alpine AS fe-builder
 
 WORKDIR /app/frontend
 
+# Vite reads VITE_* env vars at build time and inlines them into the static
+# bundle. Anything env-specific (tenant, client IDs, API scope) MUST be
+# passed as a --build-arg and re-exported as ENV before `pnpm build` so it
+# ends up in the compiled JS. Without these the SPA throws at load
+# ("Missing required env vars") and the Entra interactive flow never starts.
+ARG VITE_TENANT_ID
+ARG VITE_FRONTEND_CLIENT_ID
+# Use VITE_API_APP_ID (the API app reg's client ID) — the SPA builds the
+# scope as api://<id>/submit, which is tenant-portable. VITE_API_SCOPE
+# overrides if a non-app-id identifierUri is in use (rare).
+ARG VITE_API_APP_ID
+ARG VITE_API_SCOPE
+ARG VITE_API_BASE_URL
+ARG VITE_INSTITUTION_NAME
+ARG VITE_BRAND_LOGO_URL
+ENV VITE_TENANT_ID=$VITE_TENANT_ID \
+    VITE_FRONTEND_CLIENT_ID=$VITE_FRONTEND_CLIENT_ID \
+    VITE_API_APP_ID=$VITE_API_APP_ID \
+    VITE_API_SCOPE=$VITE_API_SCOPE \
+    VITE_API_BASE_URL=$VITE_API_BASE_URL \
+    VITE_INSTITUTION_NAME=$VITE_INSTITUTION_NAME \
+    VITE_BRAND_LOGO_URL=$VITE_BRAND_LOGO_URL
+
 # Copy package manifests
 COPY apps/control-plane/frontend/package.json apps/control-plane/frontend/pnpm-lock.yaml ./
 

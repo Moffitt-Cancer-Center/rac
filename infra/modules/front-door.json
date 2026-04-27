@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "576209395943324143"
+      "templateHash": "18442333839422967471"
     }
   },
   "parameters": {
@@ -51,7 +51,14 @@
       "type": "bool",
       "defaultValue": false,
       "metadata": {
-        "description": "Whether to attach the wildcard custom domain. Defaults to false because Front Door ManagedCertificate does not support wildcard hostnames, and CustomerCertificate setup requires KV access wired up via the FD profile MI. Set true after DNS delegation + a real cert + role assignments are in place (pass 2)."
+        "description": "Whether to attach the wildcard + apex custom domains. Defaults to false because Front Door ManagedCertificate does not support wildcard hostnames; the customer-cert path requires the FD profile MI to have Key Vault Secrets User on the source KV (granted in role-assignments). Set true after a real cert exists in KV and the role assignment has propagated (pass 2)."
+      }
+    },
+    "certKvSecretId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Resource ID of the Key Vault secret holding the TLS cert (e.g. /subscriptions/.../vaults/kv-rac-bootstrap-001/secrets/rac-dev-tls). Required when deployCustomDomain=true. Versionless — FD pins useLatestVersion=true so a re-issued cert is picked up automatically."
       }
     }
   },
@@ -64,6 +71,9 @@
       "tags": "[parameters('tags')]",
       "sku": {
         "name": "Premium_AzureFrontDoor"
+      },
+      "identity": {
+        "type": "SystemAssigned"
       }
     },
     {
@@ -103,7 +113,6 @@
         "hostName": "[parameters('appGatewayPublicFqdn')]",
         "httpPort": 80,
         "httpsPort": 443,
-        "originHostHeader": "[parameters('appGatewayPublicFqdn')]",
         "priority": 1,
         "weight": 1000,
         "enabledState": "Enabled",
@@ -131,13 +140,32 @@
         "linkToDefaultDomain": "Enabled",
         "httpsRedirect": "Enabled",
         "enabledState": "Enabled",
-        "customDomains": "[if(parameters('deployCustomDomain'), createArray(createObject('id', resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv'))))), createArray())]"
+        "customDomains": "[if(parameters('deployCustomDomain'), createArray(createObject('id', resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv')))), createObject('id', resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-apex-{0}', parameters('racEnv'))))), createArray())]"
       },
       "dependsOn": [
+        "[resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-apex-{0}', parameters('racEnv')))]",
         "[resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv')))]",
         "[resourceId('Microsoft.Cdn/profiles/afdEndpoints', format('afd-rac-{0}', parameters('racEnv')), format('afd-endpoint-{0}', parameters('racEnv')))]",
         "[resourceId('Microsoft.Cdn/profiles/originGroups/origins', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')), format('origin-appgw-{0}', parameters('racEnv')))]",
         "[resourceId('Microsoft.Cdn/profiles/originGroups', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployCustomDomain')]",
+      "type": "Microsoft.Cdn/profiles/secrets",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}', format('afd-rac-{0}', parameters('racEnv')), format('cert-rac-{0}', parameters('racEnv')))]",
+      "properties": {
+        "parameters": {
+          "type": "CustomerCertificate",
+          "useLatestVersion": true,
+          "secretSource": {
+            "id": "[parameters('certKvSecretId')]"
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv')))]"
       ]
     },
     {
@@ -148,11 +176,35 @@
       "properties": {
         "hostName": "[format('*.{0}', parameters('parentDomain'))]",
         "tlsSettings": {
-          "certificateType": "ManagedCertificate",
-          "minimumTlsVersion": "TLS12"
+          "certificateType": "CustomerCertificate",
+          "minimumTlsVersion": "TLS12",
+          "secret": {
+            "id": "[resourceId('Microsoft.Cdn/profiles/secrets', format('afd-rac-{0}', parameters('racEnv')), format('cert-rac-{0}', parameters('racEnv')))]"
+          }
         }
       },
       "dependsOn": [
+        "[resourceId('Microsoft.Cdn/profiles/secrets', format('afd-rac-{0}', parameters('racEnv')), format('cert-rac-{0}', parameters('racEnv')))]",
+        "[resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv')))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployCustomDomain')]",
+      "type": "Microsoft.Cdn/profiles/customDomains",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}', format('afd-rac-{0}', parameters('racEnv')), format('domain-apex-{0}', parameters('racEnv')))]",
+      "properties": {
+        "hostName": "[parameters('parentDomain')]",
+        "tlsSettings": {
+          "certificateType": "CustomerCertificate",
+          "minimumTlsVersion": "TLS12",
+          "secret": {
+            "id": "[resourceId('Microsoft.Cdn/profiles/secrets', format('afd-rac-{0}', parameters('racEnv')), format('cert-rac-{0}', parameters('racEnv')))]"
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Cdn/profiles/secrets', format('afd-rac-{0}', parameters('racEnv')), format('cert-rac-{0}', parameters('racEnv')))]",
         "[resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv')))]"
       ]
     },
@@ -233,6 +285,27 @@
         "description": "WAF Policy resource ID"
       },
       "value": "[resourceId('Microsoft.Network/FrontDoorWebApplicationFirewallPolicies', format('wafrac{0}', parameters('racEnv')))]"
+    },
+    "frontDoorMiPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "Front Door profile system-assigned MI principal ID (for KV role assignments)"
+      },
+      "value": "[reference(resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv'))), '2023-05-01', 'full').identity.principalId]"
+    },
+    "wildcardDomainValidationToken": {
+      "type": "string",
+      "metadata": {
+        "description": "Wildcard custom domain validation token (TXT value to add at _dnsauth.<wildcard>) — empty when deployCustomDomain=false"
+      },
+      "value": "[coalesce(tryGet(if(parameters('deployCustomDomain'), reference(resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv'))), '2023-05-01', 'full'), null()), 'properties', 'validationProperties', 'validationToken'), '')]"
+    },
+    "apexDomainValidationToken": {
+      "type": "string",
+      "metadata": {
+        "description": "Apex custom domain validation token (TXT value to add at _dnsauth.<apex>) — empty when deployCustomDomain=false"
+      },
+      "value": "[coalesce(tryGet(if(parameters('deployCustomDomain'), reference(resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-apex-{0}', parameters('racEnv'))), '2023-05-01', 'full'), null()), 'properties', 'validationProperties', 'validationToken'), '')]"
     }
   }
 }

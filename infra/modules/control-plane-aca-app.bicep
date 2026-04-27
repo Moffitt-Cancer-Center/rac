@@ -133,9 +133,13 @@ resource controlPlaneApp 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     environmentId: managedEnvironmentId
     configuration: {
-      // Internal ingress: App Gateway is the public boundary.
+      // VNet-internal exposure: env internal=true + app external=true. With
+      // external=false, the app is reachable only from inside the ACA env
+      // (other ACA apps in the same env), and AppGw probes land on the env's
+      // default catchall route → 404 → backend marked Unhealthy. See the same
+      // pattern in shim-aca-app.bicep.
       ingress: {
-        external: false
+        external: true
         targetPort: 8080
         transport: 'http'
       }

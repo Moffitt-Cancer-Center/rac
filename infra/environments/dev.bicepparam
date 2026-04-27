@@ -59,3 +59,13 @@ param controlPlaneInstitutionName = 'RAC Demo (checkwithscience.com)'
 param controlPlaneScanSeverityGate = 'high'
 param controlPlaneApproverRoleResearch = 'rac-approver-research'
 param controlPlaneApproverRoleIt = 'rac-approver-it'
+
+// ===== Front Door custom domain (CustomerCertificate from bootstrap KV) =====
+// Two-pass: pass 1 leaves deployCustomDomain=false so the FD profile picks up
+// a system-assigned MI and the bootstrap-KV Secrets User role assignment runs
+// + propagates; pass 2 flips this to true to create the FD secret and
+// wildcard/apex customDomains. Cert is rac-dev-tls in kv-rac-bootstrap-001
+// (LE wildcard issued via DNS-01). Default false so a fresh-from-teardown
+// deploy follows the documented two-pass; set to true on the second deploy.
+param deployCustomDomain = false
+param tlsCertName = 'rac-dev-tls'

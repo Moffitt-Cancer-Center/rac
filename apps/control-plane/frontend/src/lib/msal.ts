@@ -7,9 +7,20 @@ import {
 
 const tenantId = import.meta.env.VITE_TENANT_ID;
 const clientId = import.meta.env.VITE_FRONTEND_CLIENT_ID;
+// API scope identifier. Tenants with strict policies (the default Entra rule
+// "all newly added URIs must contain a tenant verified domain, tenant ID, or
+// app ID") reject vanity URIs like `api://rac-control-plane`, so the API
+// app reg's identifierUri is typically `api://<api-app-id>`. Pass either
+// the full scope (e.g. `api://<guid>/submit`) via VITE_API_SCOPE, or just
+// the API app's client ID via VITE_API_APP_ID and the canonical
+// `api://<id>/submit` form is built here.
+const apiScope = import.meta.env.VITE_API_SCOPE
+  || (import.meta.env.VITE_API_APP_ID
+    ? `api://${import.meta.env.VITE_API_APP_ID}/submit`
+    : '');
 
-if (!tenantId || !clientId) {
-  throw new Error('Missing required env vars: VITE_TENANT_ID, VITE_FRONTEND_CLIENT_ID');
+if (!tenantId || !clientId || !apiScope) {
+  throw new Error('Missing required env vars: VITE_TENANT_ID, VITE_FRONTEND_CLIENT_ID, and one of VITE_API_SCOPE or VITE_API_APP_ID');
 }
 
 export const msalInstance = new PublicClientApplication({
@@ -28,7 +39,7 @@ export async function acquireApiToken(): Promise<string> {
   const account = msalInstance.getAllAccounts()[0];
 
   const request = {
-    scopes: ['api://rac-control-plane/submit'],
+    scopes: [apiScope],
     account: account ?? undefined,
   };
 

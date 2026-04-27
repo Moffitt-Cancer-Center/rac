@@ -5,6 +5,7 @@ import { roleIds } from './role-ids.bicep'
 // Each invocation's `if` guards on non-empty params select which role assignments run:
 //   Invocation 1: scope=platform RG, KV role assignments (kvResourceId non-empty, tier3 params empty).
 //   Invocation 2: scope=Tier 3 RG, Contributor assignment (tier3 params non-empty, kvResourceId empty).
+//   Invocation 3: scope=bootstrap RG, FD MI Secrets User on bootstrap KV (frontDoorMiPrincipalId + kvResourceId non-empty).
 // =========================================
 
 @description('Control Plane managed identity principal ID (empty on first deploy; populated in Phase 5 Task 1 re-deploy)')
@@ -15,6 +16,9 @@ param shimMiPrincipalId string = ''
 
 @description('App Gateway managed identity principal ID (empty until MI is created)')
 param appGwMiPrincipalId string = ''
+
+@description('Front Door profile system-assigned MI principal ID (empty unless wiring FD CustomerCertificate from a KV)')
+param frontDoorMiPrincipalId string = ''
 
 @description('Key Vault resource ID (platform Key Vault, for KV assignments only)')
 param kvResourceId string = ''
@@ -105,6 +109,19 @@ resource kvCertificatesUserForAppGw 'Microsoft.Authorization/roleAssignments@202
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.keyVaultCertificatesUser)
     principalId: appGwMiPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Key Vault Secrets User role for Front Door profile MI
+// Used when this module is invoked against the bootstrap KV (where the LE TLS
+// cert lives). FD reads the cert as a KV secret via this MI.
+resource kvSecretsUserForFrontDoor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(frontDoorMiPrincipalId) && !empty(kvResourceId)) {
+  scope: kv
+  name: guid(kv.id, frontDoorMiPrincipalId, roleIds.keyVaultSecretsUser)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.keyVaultSecretsUser)
+    principalId: frontDoorMiPrincipalId
     principalType: 'ServicePrincipal'
   }
 }

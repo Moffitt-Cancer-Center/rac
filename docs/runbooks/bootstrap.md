@@ -607,6 +607,96 @@ These are bugs that surfaced during the first end-to-end deploy and will surface
 
 **First ACA environment in a fresh subscription takes 30–60 minutes** (Container Apps provisions an internal AKS fleet under the hood). Looks like a hang in the Portal. Subsequent deploys are fast. Plan accordingly on first stand-up.
 
+## Front Door custom domain (LE wildcard, two-pass)
+
+Reviewer URLs need a real cert (FD's managed cert doesn't issue wildcards). The dev path uses Let's Encrypt + a customer cert in the **bootstrap** KV; the cert and KV survive teardown, so re-deploys reuse the cert until expiry (90 days).
+
+**One-time per env (or whenever the cert nears expiry):**
+
+1. Issue the LE wildcard + apex via DNS-01 against the env's Azure DNS zone:
+   ```
+   acme.sh --issue \
+     -d '<parentDomain>' -d '*.<parentDomain>' \
+     --keylength 2048 --dns \
+     --yes-I-know-dns-manual-mode-enough-go-ahead-please
+   # Add the printed TXT records to _acme-challenge in the Azure DNS zone, then:
+   acme.sh --renew -d '<parentDomain>' --yes-I-know-dns-manual-mode-enough-go-ahead-please
+   ```
+   **Use RSA (`--keylength 2048`)** — Front Door rejects ECDSA leafs with `public key algorithm mismatch with signature algorithm` even when the chain is well-formed.
+2. Convert fullchain.cer + key to PFX (empty password), import to the **bootstrap** KV under the cert name configured by `tlsCertName` (default `rac-dev-tls`).
+
+**On every deploy** with `deployCustomDomain=true`:
+
+- The FD profile gets a system-assigned MI; `role-assignments.bicep` invocation #3 (scoped to `rg-rac-bootstrap`) grants it Key Vault Secrets User on the bootstrap KV.
+- A `Microsoft.Cdn/profiles/secrets` resource wraps the KV cert with `useLatestVersion: true` (re-issued certs are picked up without redeploy).
+- Two `customDomains` are created (wildcard + apex). Pre-validation works automatically because the parent zone is in Azure DNS in the same subscription.
+
+**Two-pass requirement.** Run pass 1 with `deployCustomDomain=false` so the FD MI is created and the role assignment propagates; pass 2 with `deployCustomDomain=true` adds the secret + customDomains. Single-pass races role propagation against the FD secret resource creation.
+
+**App Gateway origin cert.** FD validates the origin TLS chain — it rejects self-signed AppGw certs with `OriginCertificateSelfSigned`. Point AppGw at the same LE cert (set `RAC_APPGW_TLS_CERT_KV_SECRET_ID` to the bootstrap KV's `rac-dev-tls` secret URI).
+
+**App Gateway listener hostnames.** FD's TLS handshake to AppGw uses `SNI=<appgw-pip-fqdn>`, but the wildcard listener only matches `*.<parentDomain>`. Add the AppGw PIP FQDN as a second hostname on the listener so SNI matches; without it AppGw returns its default 404. (`infra/modules/app-gateway.bicep` does this automatically using `publicIP.properties.dnsSettings.fqdn`.)
+
+**FD originHostHeader** must be unset (null) on the origin so FD forwards the original Host header from the user's request — AppGw needs `Host: cp.<parentDomain>` to match the wildcard listener and the shim needs the original hostname for slug routing.
+
+**DNS records (in the Azure DNS zone for `<parentDomain>`):**
+- `*` CNAME → `<fd-endpoint-host>`
+- `@` Alias A record targeting the FD endpoint resource ID
+
+## Hostname-based AppGw routing for the control plane
+
+The control plane is a separate ACA app (not slug-routed by the shim). AppGw uses two listeners:
+
+- `controlPlaneHttpsListener`: hostname `cp.<parentDomain>` (specific) → backend pool: control plane internal FQDN, custom probe to `/health`.
+- `appGatewayHttpsListener`: hostnames `*.<parentDomain>` + the AppGw PIP FQDN (wildcard) → shim, custom probe to `/_shim/health`.
+
+AppGw v2 prefers specific hostnames over wildcards, so `cp.*` lands on the control plane and any other subdomain falls through to the shim. The CP listener's hostname prefix is parameterizable (`controlPlaneHostnamePrefix`, default `cp`).
+
+**Control plane ACA app must use `external: true`** (in addition to the env being `internal: true`). With `external: false`, AppGw probes land on the env's catchall route and come back as 404 — same gotcha as the shim. The pattern is "VNet-internal exposure": env internal=true + app external=true.
+
+**Bicep cycle to avoid.** `controlPlaneAcaApp` already takes `appGateway.outputs.appGatewayPublicIp` as an input. If AppGw's module also reads `controlPlaneAcaApp.outputs.controlPlaneFqdn`, you get a cycle. `main.bicep` constructs the CP FQDN deterministically as `rac-control-plane-${racEnv}.${acaEnv.outputs.envDefaultDomain}` (no `internal.` segment, since `external: true`).
+
+## OIDC / Entra app reg setup
+
+Two app registrations are required for the control plane:
+
+1. **SPA app reg** (referenced by `controlPlaneIdpClientId`): MSAL.js auth-code + PKCE. Set `spa.redirectUris` to include `https://cp.<parentDomain>` (the SPA's loaded origin) — *not* `publicClient.redirectUris` (which is for native/desktop clients).
+2. **API app reg** (referenced by `controlPlaneIdpApiClientId`): the audience the SPA requests tokens for. Needs:
+   - `identifierUris`: `["api://<api-app-id>"]`. **Most Entra tenants enforce a policy** that "all newly added URIs must contain a tenant verified domain, tenant ID, or app ID" — so `api://rac-control-plane` is rejected. Use the app-ID form for portability.
+   - `oauth2PermissionScopes`: at least one scope, e.g. `submit`.
+   - `preAuthorizedApplications`: the SPA app ID with the scope's permission ID, so the SPA gets a token without an admin consent prompt.
+
+Patch sample for the API app reg (Graph PATCH, two requests — scope first, then preAuth, since preAuth references the scope ID):
+```
+SCOPE_GUID=$(uuidgen)
+az rest --method PATCH \
+  --uri "https://graph.microsoft.com/v1.0/applications/<api-app-object-id>" \
+  --body "{ \"identifierUris\": [\"api://<api-app-id>\"], \"api\": { \"oauth2PermissionScopes\": [{ \"id\": \"$SCOPE_GUID\", ...}] } }"
+az rest --method PATCH \
+  --uri "https://graph.microsoft.com/v1.0/applications/<api-app-object-id>" \
+  --body "{ \"api\": { \"preAuthorizedApplications\": [{ \"appId\": \"<spa-app-id>\", \"delegatedPermissionIds\": [\"$SCOPE_GUID\"] }] } }"
+```
+
+**SPA scope is built from `VITE_API_APP_ID`** (canonical, tenant-portable: `api://<api-app-id>/submit`). Set `VITE_API_SCOPE` only if your tenant allows a non-app-ID identifierUri.
+
+## Building the control plane image (frontend env vars MUST be baked in)
+
+Vite inlines `VITE_*` env vars at **build time** — they cannot be set at runtime. The control-plane image must be built with all of these, or the SPA throws "Missing required env vars" at load and Entra never starts:
+
+```
+docker build \
+  --build-arg VITE_TENANT_ID=<tenant-id> \
+  --build-arg VITE_FRONTEND_CLIENT_ID=<spa-app-id> \
+  --build-arg VITE_API_APP_ID=<api-app-id> \
+  --build-arg VITE_INSTITUTION_NAME='Your Org Name' \
+  --build-arg VITE_BRAND_LOGO_URL='https://...' \
+  -f apps/control-plane/Dockerfile \
+  -t <acr>.azurecr.io/rac-control-plane:<tag> \
+  .
+```
+
+Without `VITE_API_APP_ID` (or `VITE_API_SCOPE`), the SPA's MSAL config fails initialization. There is no runtime escape hatch — only a rebuild fixes it.
+
 ## Next Steps
 
 1. Confirm all Tier 2 infrastructure is operational (Task 17 acceptance checks).

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "1512551112549495856"
+      "templateHash": "17853041322562648300"
     }
   },
   "parameters": {
@@ -56,6 +56,20 @@
       "defaultValue": "",
       "metadata": {
         "description": "Shim internal FQDN to use as the backend pool target (e.g. rac-shim-dev.internal.xxx.azurecontainerapps.io). Leave empty on first deploy — the placeholder FQDN is preserved until the shim ACA app is deployed."
+      }
+    },
+    "controlPlaneFqdn": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Control plane internal FQDN to use as a second backend pool. Leave empty on first deploy — the cp.<parentDomain> listener / routing rule is gated on this being non-empty so the gateway can deploy before the control plane exists."
+      }
+    },
+    "controlPlaneHostnamePrefix": {
+      "type": "string",
+      "defaultValue": "cp",
+      "metadata": {
+        "description": "Hostname (subdomain prefix) the control plane is reachable at, e.g. \"cp\" → cp.<parentDomain>. AppGw uses this to build the specific-host listener that takes precedence over the *.<parentDomain> wildcard listener."
       }
     },
     "tags": {
@@ -163,91 +177,11 @@
             }
           }
         ],
-        "backendAddressPools": [
-          {
-            "name": "appGatewayBackendPool",
-            "properties": {
-              "backendAddresses": [
-                {
-                  "fqdn": "[if(empty(parameters('shimFqdn')), format('shim.internal.{0}.azurecontainerapps.io', parameters('location')), parameters('shimFqdn'))]"
-                }
-              ]
-            }
-          }
-        ],
-        "backendHttpSettingsCollection": [
-          {
-            "name": "appGatewayBackendHttpSettings",
-            "properties": {
-              "port": 443,
-              "protocol": "Https",
-              "cookieBasedAffinity": "Disabled",
-              "requestTimeout": 120,
-              "pickHostNameFromBackendAddress": true,
-              "probeEnabled": true,
-              "probe": {
-                "id": "[format('{0}/probes/shimHealthProbe', variables('appGwId'))]"
-              }
-            }
-          }
-        ],
-        "probes": [
-          {
-            "name": "shimHealthProbe",
-            "properties": {
-              "protocol": "Https",
-              "path": "/_shim/health",
-              "host": "[if(empty(parameters('shimFqdn')), format('shim.internal.{0}.azurecontainerapps.io', parameters('location')), parameters('shimFqdn'))]",
-              "interval": 30,
-              "timeout": 10,
-              "unhealthyThreshold": 3,
-              "match": {
-                "statusCodes": [
-                  "200-399"
-                ]
-              }
-            }
-          }
-        ],
-        "httpListeners": [
-          {
-            "name": "appGatewayHttpsListener",
-            "properties": {
-              "frontendIPConfiguration": {
-                "id": "[format('{0}/frontendIPConfigurations/appGatewayFrontendIP', variables('appGwId'))]"
-              },
-              "frontendPort": {
-                "id": "[format('{0}/frontendPorts/appGatewayFrontendPort443', variables('appGwId'))]"
-              },
-              "protocol": "Https",
-              "sslCertificate": {
-                "id": "[format('{0}/sslCertificates/appGatewaySslCert', variables('appGwId'))]"
-              },
-              "hostNames": [
-                "[format('*.{0}', parameters('parentDomain'))]"
-              ],
-              "requireServerNameIndication": true
-            }
-          }
-        ],
-        "requestRoutingRules": [
-          {
-            "name": "appGatewayRoutingRule",
-            "properties": {
-              "ruleType": "Basic",
-              "priority": 100,
-              "httpListener": {
-                "id": "[format('{0}/httpListeners/appGatewayHttpsListener', variables('appGwId'))]"
-              },
-              "backendAddressPool": {
-                "id": "[format('{0}/backendAddressPools/appGatewayBackendPool', variables('appGwId'))]"
-              },
-              "backendHttpSettings": {
-                "id": "[format('{0}/backendHttpSettingsCollection/appGatewayBackendHttpSettings', variables('appGwId'))]"
-              }
-            }
-          }
-        ],
+        "backendAddressPools": "[concat(createArray(createObject('name', 'appGatewayBackendPool', 'properties', createObject('backendAddresses', createArray(createObject('fqdn', if(empty(parameters('shimFqdn')), format('shim.internal.{0}.azurecontainerapps.io', parameters('location')), parameters('shimFqdn'))))))), if(empty(parameters('controlPlaneFqdn')), createArray(), createArray(createObject('name', 'controlPlaneBackendPool', 'properties', createObject('backendAddresses', createArray(createObject('fqdn', parameters('controlPlaneFqdn'))))))))]",
+        "backendHttpSettingsCollection": "[concat(createArray(createObject('name', 'appGatewayBackendHttpSettings', 'properties', createObject('port', 443, 'protocol', 'Https', 'cookieBasedAffinity', 'Disabled', 'requestTimeout', 120, 'pickHostNameFromBackendAddress', true(), 'probeEnabled', true(), 'probe', createObject('id', format('{0}/probes/shimHealthProbe', variables('appGwId')))))), if(empty(parameters('controlPlaneFqdn')), createArray(), createArray(createObject('name', 'controlPlaneBackendHttpSettings', 'properties', createObject('port', 443, 'protocol', 'Https', 'cookieBasedAffinity', 'Disabled', 'requestTimeout', 120, 'pickHostNameFromBackendAddress', true(), 'probeEnabled', true(), 'probe', createObject('id', format('{0}/probes/controlPlaneHealthProbe', variables('appGwId'))))))))]",
+        "probes": "[concat(createArray(createObject('name', 'shimHealthProbe', 'properties', createObject('protocol', 'Https', 'path', '/_shim/health', 'host', if(empty(parameters('shimFqdn')), format('shim.internal.{0}.azurecontainerapps.io', parameters('location')), parameters('shimFqdn')), 'interval', 30, 'timeout', 10, 'unhealthyThreshold', 3, 'match', createObject('statusCodes', createArray('200-399'))))), if(empty(parameters('controlPlaneFqdn')), createArray(), createArray(createObject('name', 'controlPlaneHealthProbe', 'properties', createObject('protocol', 'Https', 'path', '/health', 'host', parameters('controlPlaneFqdn'), 'interval', 30, 'timeout', 10, 'unhealthyThreshold', 3, 'match', createObject('statusCodes', createArray('200-399')))))))]",
+        "httpListeners": "[concat(createArray(createObject('name', 'appGatewayHttpsListener', 'properties', createObject('frontendIPConfiguration', createObject('id', format('{0}/frontendIPConfigurations/appGatewayFrontendIP', variables('appGwId'))), 'frontendPort', createObject('id', format('{0}/frontendPorts/appGatewayFrontendPort443', variables('appGwId'))), 'protocol', 'Https', 'sslCertificate', createObject('id', format('{0}/sslCertificates/appGatewaySslCert', variables('appGwId'))), 'hostNames', createArray(format('*.{0}', parameters('parentDomain')), reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings.fqdn), 'requireServerNameIndication', true()))), if(empty(parameters('controlPlaneFqdn')), createArray(), createArray(createObject('name', 'controlPlaneHttpsListener', 'properties', createObject('frontendIPConfiguration', createObject('id', format('{0}/frontendIPConfigurations/appGatewayFrontendIP', variables('appGwId'))), 'frontendPort', createObject('id', format('{0}/frontendPorts/appGatewayFrontendPort443', variables('appGwId'))), 'protocol', 'Https', 'sslCertificate', createObject('id', format('{0}/sslCertificates/appGatewaySslCert', variables('appGwId'))), 'hostNames', createArray(format('{0}.{1}', parameters('controlPlaneHostnamePrefix'), parameters('parentDomain'))), 'requireServerNameIndication', true())))))]",
+        "requestRoutingRules": "[concat(createArray(createObject('name', 'appGatewayRoutingRule', 'properties', createObject('ruleType', 'Basic', 'priority', 100, 'httpListener', createObject('id', format('{0}/httpListeners/appGatewayHttpsListener', variables('appGwId'))), 'backendAddressPool', createObject('id', format('{0}/backendAddressPools/appGatewayBackendPool', variables('appGwId'))), 'backendHttpSettings', createObject('id', format('{0}/backendHttpSettingsCollection/appGatewayBackendHttpSettings', variables('appGwId')))))), if(empty(parameters('controlPlaneFqdn')), createArray(), createArray(createObject('name', 'controlPlaneRoutingRule', 'properties', createObject('ruleType', 'Basic', 'priority', 50, 'httpListener', createObject('id', format('{0}/httpListeners/controlPlaneHttpsListener', variables('appGwId'))), 'backendAddressPool', createObject('id', format('{0}/backendAddressPools/controlPlaneBackendPool', variables('appGwId'))), 'backendHttpSettings', createObject('id', format('{0}/backendHttpSettingsCollection/controlPlaneBackendHttpSettings', variables('appGwId'))))))))]",
         "sslCertificates": [
           {
             "name": "appGatewaySslCert",

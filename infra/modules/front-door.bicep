@@ -16,16 +16,28 @@ param privateLinkLocation string = ''
 @description('Resource tags')
 param tags object
 
-@description('Whether to attach the wildcard custom domain. Defaults to false because Front Door ManagedCertificate does not support wildcard hostnames, and CustomerCertificate setup requires KV access wired up via the FD profile MI. Set true after DNS delegation + a real cert + role assignments are in place (pass 2).')
+@description('Whether to attach the wildcard + apex custom domains. Defaults to false because Front Door ManagedCertificate does not support wildcard hostnames; the customer-cert path requires the FD profile MI to have Key Vault Secrets User on the source KV (granted in role-assignments). Set true after a real cert exists in KV and the role assignment has propagated (pass 2).')
 param deployCustomDomain bool = false
 
+@description('Resource ID of the Key Vault secret holding the TLS cert (e.g. /subscriptions/.../vaults/kv-rac-bootstrap-001/secrets/rac-dev-tls). Required when deployCustomDomain=true. Versionless — FD pins useLatestVersion=true so a re-issued cert is picked up automatically.')
+param certKvSecretId string = ''
+
 // Front Door Premium profile
+//
+// `identity: SystemAssigned` is required for the customer-cert flow: FD reads
+// the cert from the source Key Vault using its system MI, which is then
+// granted Key Vault Secrets User in role-assignments-bootstrap. Without an
+// MI here, the secret-source resource fails with "Customer secret access
+// denied".
 resource frontDoorProfile 'Microsoft.Cdn/profiles@2023-05-01' = {
   name: 'afd-rac-${racEnv}'
   location: 'global'
   tags: tags
   sku: {
     name: 'Premium_AzureFrontDoor'
+  }
+  identity: {
+    type: 'SystemAssigned'
   }
 }
 
@@ -55,6 +67,13 @@ resource originGroup 'Microsoft.Cdn/profiles/originGroups@2023-05-01' = {
 }
 
 // Origin (using App Gateway public FQDN or shared private link)
+//
+// originHostHeader is intentionally NOT set: with no value, FD forwards the
+// original Host header from the client request (e.g. cp.<parentDomain>),
+// which is what AppGw's wildcard listener (`hostNames: ['*.<parentDomain>']`
+// + requireServerNameIndication) needs to match. Setting originHostHeader
+// to appGatewayPublicFqdn made AppGw see Host: <appgw-pip-fqdn>, which the
+// wildcard listener doesn't match → AppGw returned 502 to FD.
 resource origin 'Microsoft.Cdn/profiles/originGroups/origins@2023-05-01' = {
   name: 'origin-appgw-${racEnv}'
   parent: originGroup
@@ -62,7 +81,6 @@ resource origin 'Microsoft.Cdn/profiles/originGroups/origins@2023-05-01' = {
     hostName: appGatewayPublicFqdn
     httpPort: 80
     httpsPort: 443
-    originHostHeader: appGatewayPublicFqdn
     priority: 1
     weight: 1000
     enabledState: 'Enabled'
@@ -106,24 +124,64 @@ resource route 'Microsoft.Cdn/profiles/afdEndpoints/routes@2023-05-01' = {
     enabledState: 'Enabled'
     customDomains: deployCustomDomain ? [
       {
-        id: customDomain.id
+        id: customDomainWildcard.id
+      }
+      {
+        id: customDomainApex.id
       }
     ] : []
   }
 }
 
-// Custom domain for wildcard. Gated behind deployCustomDomain because Front
-// Door's ManagedCertificate does not support wildcard hostnames; the
-// pass-2 path is to flip this on once a real CustomerCertificate-backed
-// cert is referenced (or once individual subdomains replace the wildcard).
-resource customDomain 'Microsoft.Cdn/profiles/customDomains@2023-05-01' = if (deployCustomDomain) {
+// FD-side wrapper around the KV cert. FD profile MI must have Key Vault
+// Secrets User on the source vault before this resource can be created;
+// role-assignments-bootstrap.bicep handles that grant. `useLatestVersion=true`
+// means we don't have to redeploy when the cert is renewed — FD picks up the
+// new version automatically (it polls the KV).
+resource fdCertSecret 'Microsoft.Cdn/profiles/secrets@2023-05-01' = if (deployCustomDomain) {
+  name: 'cert-rac-${racEnv}'
+  parent: frontDoorProfile
+  properties: {
+    parameters: {
+      type: 'CustomerCertificate'
+      useLatestVersion: true
+      secretSource: {
+        id: certKvSecretId
+      }
+    }
+  }
+}
+
+// Custom domain for the wildcard. CustomerCertificate is required because FD
+// ManagedCertificate does not issue wildcard certs.
+resource customDomainWildcard 'Microsoft.Cdn/profiles/customDomains@2023-05-01' = if (deployCustomDomain) {
   name: 'domain-wildcard-${racEnv}'
   parent: frontDoorProfile
   properties: {
     hostName: '*.${parentDomain}'
     tlsSettings: {
-      certificateType: 'ManagedCertificate'
+      certificateType: 'CustomerCertificate'
       minimumTlsVersion: 'TLS12'
+      secret: {
+        id: fdCertSecret.id
+      }
+    }
+  }
+}
+
+// Custom domain for the apex (parentDomain itself). Same cert covers both —
+// the LE cert SANs include the apex and the wildcard.
+resource customDomainApex 'Microsoft.Cdn/profiles/customDomains@2023-05-01' = if (deployCustomDomain) {
+  name: 'domain-apex-${racEnv}'
+  parent: frontDoorProfile
+  properties: {
+    hostName: parentDomain
+    tlsSettings: {
+      certificateType: 'CustomerCertificate'
+      minimumTlsVersion: 'TLS12'
+      secret: {
+        id: fdCertSecret.id
+      }
     }
   }
 }
@@ -199,3 +257,12 @@ output frontDoorEndpointHostname string = frontDoorEndpoint.properties.hostName
 
 @description('WAF Policy resource ID')
 output wafPolicyId string = wafPolicy.id
+
+@description('Front Door profile system-assigned MI principal ID (for KV role assignments)')
+output frontDoorMiPrincipalId string = frontDoorProfile.identity.principalId
+
+@description('Wildcard custom domain validation token (TXT value to add at _dnsauth.<wildcard>) — empty when deployCustomDomain=false')
+output wildcardDomainValidationToken string = customDomainWildcard.?properties.validationProperties.validationToken ?? ''
+
+@description('Apex custom domain validation token (TXT value to add at _dnsauth.<apex>) — empty when deployCustomDomain=false')
+output apexDomainValidationToken string = customDomainApex.?properties.validationProperties.validationToken ?? ''

@@ -162,6 +162,20 @@ param controlPlaneMetricsEnabled bool = true
 @description('OTLP endpoint for the control plane (leave empty to disable)')
 param controlPlaneOtlpEndpoint string = ''
 
+// ===== Front Door custom domain (CustomerCertificate) =====
+
+@description('Whether to attach the wildcard + apex custom domains on Front Door. Requires the cert to exist in the bootstrap KV and the FD MI Secrets User role assignment to have propagated.')
+param deployCustomDomain bool = false
+
+@description('Bootstrap resource group name (where the long-lived TLS cert KV lives). Default rg-rac-bootstrap matches scripts/demo-bootstrap conventions.')
+param bootstrapResourceGroupName string = 'rg-rac-bootstrap'
+
+@description('Bootstrap KV name holding the LE/TLS cert. Default kv-rac-bootstrap-001 matches scripts/demo-bootstrap.')
+param bootstrapKvName string = 'kv-rac-bootstrap-001'
+
+@description('Name of the certificate (and matching KV secret) inside the bootstrap KV. Default rac-dev-tls.')
+param tlsCertName string = 'rac-dev-tls'
+
 // ========== VARIABLES ==========
 
 var commonTags = buildTags(racEnv, {})
@@ -182,6 +196,13 @@ resource rgTier3 'Microsoft.Resources/resourceGroups@2023-07-01' = {
   name: 'rg-rac-tier3-${racEnv}'
   location: location
   tags: union(commonTags, { rac_managed_by: 'rac-control-plane' })
+}
+
+// Bootstrap RG is provisioned out-of-band by scripts/demo-bootstrap and survives
+// teardown — referenced (not declared) so we can scope role assignments + cert
+// references at it without owning its lifecycle.
+resource rgBootstrap 'Microsoft.Resources/resourceGroups@2023-07-01' existing = {
+  name: bootstrapResourceGroupName
 }
 
 // ========== CORE INFRASTRUCTURE MODULES ==========
@@ -349,6 +370,19 @@ module appGateway 'modules/app-gateway.bicep' = {
     // safe-dereference operator to avoid BCP318 ("module|null may be null at
     // start of deploy"). When the module isn't deployed, fall back to ''.
     shimFqdn: shimAcaApp.?outputs.shimFqdn ?? ''
+    // Construct controlPlaneFqdn deterministically from the ACA env's
+    // defaultDomain instead of reading it back from the controlPlaneAcaApp
+    // module — that would introduce a cycle since controlPlaneAcaApp depends
+    // on appGateway.outputs.appGatewayPublicIp.
+    //
+    // The control plane uses the VNet-internal exposure pattern (env
+    // internal=true + app external=true), so its FQDN is
+    // <name>.<defaultDomain> with no `internal.` segment. Apps with
+    // external=false use <name>.internal.<defaultDomain> instead, but those
+    // can't be reached by AppGw — the env's default catchall returns 404.
+    controlPlaneFqdn: deployControlPlaneApp && !empty(controlPlaneImageName)
+      ? 'rac-control-plane-${racEnv}.${acaEnvironment.outputs.envDefaultDomain}'
+      : ''
     tags: commonTags
   }
 }
@@ -361,6 +395,12 @@ module frontDoor 'modules/front-door.bicep' = {
     parentDomain: parentDomain
     appGatewayPublicFqdn: appGateway.outputs.appGatewayPublicFqdn
     appGatewayPrivateLinkResourceId: ''
+    deployCustomDomain: deployCustomDomain
+    // Versionless KV secret URI is what FD's secret-source wants together with
+    // useLatestVersion=true. Constructed from bootstrap RG/KV/cert-name params
+    // rather than a hand-pasted secretId so re-issuing the cert doesn't
+    // require a bicepparam edit.
+    certKvSecretId: deployCustomDomain ? resourceId(subscription().subscriptionId, bootstrapResourceGroupName, 'Microsoft.KeyVault/vaults/secrets', bootstrapKvName, tlsCertName) : ''
     tags: commonTags
   }
 }
@@ -399,6 +439,24 @@ module roleAssignmentsTier3 'modules/role-assignments.bicep' = {
     controlPlaneMiPrincipalId: managedIdentity.outputs.controlPlaneMiPrincipalId
     shimMiPrincipalId: ''
     kvResourceId: ''
+  }
+}
+
+// Module invocation 3: scoped to bootstrap RG for FD MI Secrets User on the
+// long-lived TLS cert KV.
+//
+// Deployed unconditionally (not gated on deployCustomDomain) so that the
+// role assignment can propagate during the first pass (when deployCustomDomain
+// is still false). On the second pass, with deployCustomDomain=true, the FD
+// secret + customDomain resources can read the cert immediately because the
+// role is already in place. Idempotent: no harm in running it when the FD
+// secret resources are gated off.
+module roleAssignmentsBootstrap 'modules/role-assignments.bicep' = {
+  scope: rgBootstrap
+  name: 'deploy-roleassignments-bootstrap'
+  params: {
+    frontDoorMiPrincipalId: frontDoor.outputs.frontDoorMiPrincipalId
+    kvResourceId: resourceId(subscription().subscriptionId, bootstrapResourceGroupName, 'Microsoft.KeyVault/vaults', bootstrapKvName)
   }
 }
 
@@ -591,3 +649,9 @@ output controlPlaneAppId string = controlPlaneAcaApp.?outputs.controlPlaneAppId 
 
 @description('Control Plane ACA internal FQDN (empty when deployControlPlaneApp was false or no image)')
 output controlPlaneFqdn string = controlPlaneAcaApp.?outputs.controlPlaneFqdn ?? ''
+
+@description('Front Door wildcard custom domain validation token (TXT for _dnsauth.<wildcard>) — empty when deployCustomDomain=false')
+output frontDoorWildcardValidationToken string = frontDoor.outputs.wildcardDomainValidationToken
+
+@description('Front Door apex custom domain validation token (TXT for _dnsauth.<apex>) — empty when deployCustomDomain=false')
+output frontDoorApexValidationToken string = frontDoor.outputs.apexDomainValidationToken

@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "9031440077403182340"
+      "templateHash": "6405675791209238781"
     }
   },
   "functions": [
@@ -375,6 +375,34 @@
       "metadata": {
         "description": "OTLP endpoint for the control plane (leave empty to disable)"
       }
+    },
+    "deployCustomDomain": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Whether to attach the wildcard + apex custom domains on Front Door. Requires the cert to exist in the bootstrap KV and the FD MI Secrets User role assignment to have propagated."
+      }
+    },
+    "bootstrapResourceGroupName": {
+      "type": "string",
+      "defaultValue": "rg-rac-bootstrap",
+      "metadata": {
+        "description": "Bootstrap resource group name (where the long-lived TLS cert KV lives). Default rg-rac-bootstrap matches scripts/demo-bootstrap conventions."
+      }
+    },
+    "bootstrapKvName": {
+      "type": "string",
+      "defaultValue": "kv-rac-bootstrap-001",
+      "metadata": {
+        "description": "Bootstrap KV name holding the LE/TLS cert. Default kv-rac-bootstrap-001 matches scripts/demo-bootstrap."
+      }
+    },
+    "tlsCertName": {
+      "type": "string",
+      "defaultValue": "rac-dev-tls",
+      "metadata": {
+        "description": "Name of the certificate (and matching KV secret) inside the bootstrap KV. Default rac-dev-tls."
+      }
     }
   },
   "variables": {
@@ -398,6 +426,12 @@
       "name": "[format('rg-rac-tier3-{0}', parameters('racEnv'))]",
       "location": "[parameters('location')]",
       "tags": "[union(variables('commonTags'), createObject('rac_managed_by', 'rac-control-plane'))]"
+    },
+    "rgBootstrap": {
+      "existing": true,
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2023-07-01",
+      "name": "[parameters('bootstrapResourceGroupName')]"
     },
     "network": {
       "type": "Microsoft.Resources/deployments",
@@ -2363,6 +2397,7 @@
           "shimFqdn": {
             "value": "[coalesce(tryGet(if(not(empty(parameters('shimImageName'))), reference('shimAcaApp'), null()), 'outputs', 'shimFqdn', 'value'), '')]"
           },
+          "controlPlaneFqdn": "[if(and(parameters('deployControlPlaneApp'), not(empty(parameters('controlPlaneImageName')))), createObject('value', format('rac-control-plane-{0}.internal.{1}', parameters('racEnv'), reference('acaEnvironment').outputs.envDefaultDomain.value)), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -2374,7 +2409,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "1512551112549495856"
+              "templateHash": "17853041322562648300"
             }
           },
           "parameters": {
@@ -2425,6 +2460,20 @@
               "defaultValue": "",
               "metadata": {
                 "description": "Shim internal FQDN to use as the backend pool target (e.g. rac-shim-dev.internal.xxx.azurecontainerapps.io). Leave empty on first deploy — the placeholder FQDN is preserved until the shim ACA app is deployed."
+              }
+            },
+            "controlPlaneFqdn": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Control plane internal FQDN to use as a second backend pool. Leave empty on first deploy — the cp.<parentDomain> listener / routing rule is gated on this being non-empty so the gateway can deploy before the control plane exists."
+              }
+            },
+            "controlPlaneHostnamePrefix": {
+              "type": "string",
+              "defaultValue": "cp",
+              "metadata": {
+                "description": "Hostname (subdomain prefix) the control plane is reachable at, e.g. \"cp\" → cp.<parentDomain>. AppGw uses this to build the specific-host listener that takes precedence over the *.<parentDomain> wildcard listener."
               }
             },
             "tags": {
@@ -2532,91 +2581,11 @@
                     }
                   }
                 ],
-                "backendAddressPools": [
-                  {
-                    "name": "appGatewayBackendPool",
-                    "properties": {
-                      "backendAddresses": [
-                        {
-                          "fqdn": "[if(empty(parameters('shimFqdn')), format('shim.internal.{0}.azurecontainerapps.io', parameters('location')), parameters('shimFqdn'))]"
-                        }
-                      ]
-                    }
-                  }
-                ],
-                "backendHttpSettingsCollection": [
-                  {
-                    "name": "appGatewayBackendHttpSettings",
-                    "properties": {
-                      "port": 443,
-                      "protocol": "Https",
-                      "cookieBasedAffinity": "Disabled",
-                      "requestTimeout": 120,
-                      "pickHostNameFromBackendAddress": true,
-                      "probeEnabled": true,
-                      "probe": {
-                        "id": "[format('{0}/probes/shimHealthProbe', variables('appGwId'))]"
-                      }
-                    }
-                  }
-                ],
-                "probes": [
-                  {
-                    "name": "shimHealthProbe",
-                    "properties": {
-                      "protocol": "Https",
-                      "path": "/_shim/health",
-                      "host": "[if(empty(parameters('shimFqdn')), format('shim.internal.{0}.azurecontainerapps.io', parameters('location')), parameters('shimFqdn'))]",
-                      "interval": 30,
-                      "timeout": 10,
-                      "unhealthyThreshold": 3,
-                      "match": {
-                        "statusCodes": [
-                          "200-399"
-                        ]
-                      }
-                    }
-                  }
-                ],
-                "httpListeners": [
-                  {
-                    "name": "appGatewayHttpsListener",
-                    "properties": {
-                      "frontendIPConfiguration": {
-                        "id": "[format('{0}/frontendIPConfigurations/appGatewayFrontendIP', variables('appGwId'))]"
-                      },
-                      "frontendPort": {
-                        "id": "[format('{0}/frontendPorts/appGatewayFrontendPort443', variables('appGwId'))]"
-                      },
-                      "protocol": "Https",
-                      "sslCertificate": {
-                        "id": "[format('{0}/sslCertificates/appGatewaySslCert', variables('appGwId'))]"
-                      },
-                      "hostNames": [
-                        "[format('*.{0}', parameters('parentDomain'))]"
-                      ],
-                      "requireServerNameIndication": true
-                    }
-                  }
-                ],
-                "requestRoutingRules": [
-                  {
-                    "name": "appGatewayRoutingRule",
-                    "properties": {
-                      "ruleType": "Basic",
-                      "priority": 100,
-                      "httpListener": {
-                        "id": "[format('{0}/httpListeners/appGatewayHttpsListener', variables('appGwId'))]"
-                      },
-                      "backendAddressPool": {
-                        "id": "[format('{0}/backendAddressPools/appGatewayBackendPool', variables('appGwId'))]"
-                      },
-                      "backendHttpSettings": {
-                        "id": "[format('{0}/backendHttpSettingsCollection/appGatewayBackendHttpSettings', variables('appGwId'))]"
-                      }
-                    }
-                  }
-                ],
+                "backendAddressPools": "[concat(createArray(createObject('name', 'appGatewayBackendPool', 'properties', createObject('backendAddresses', createArray(createObject('fqdn', if(empty(parameters('shimFqdn')), format('shim.internal.{0}.azurecontainerapps.io', parameters('location')), parameters('shimFqdn'))))))), if(empty(parameters('controlPlaneFqdn')), createArray(), createArray(createObject('name', 'controlPlaneBackendPool', 'properties', createObject('backendAddresses', createArray(createObject('fqdn', parameters('controlPlaneFqdn'))))))))]",
+                "backendHttpSettingsCollection": "[concat(createArray(createObject('name', 'appGatewayBackendHttpSettings', 'properties', createObject('port', 443, 'protocol', 'Https', 'cookieBasedAffinity', 'Disabled', 'requestTimeout', 120, 'pickHostNameFromBackendAddress', true(), 'probeEnabled', true(), 'probe', createObject('id', format('{0}/probes/shimHealthProbe', variables('appGwId')))))), if(empty(parameters('controlPlaneFqdn')), createArray(), createArray(createObject('name', 'controlPlaneBackendHttpSettings', 'properties', createObject('port', 443, 'protocol', 'Https', 'cookieBasedAffinity', 'Disabled', 'requestTimeout', 120, 'pickHostNameFromBackendAddress', true(), 'probeEnabled', true(), 'probe', createObject('id', format('{0}/probes/controlPlaneHealthProbe', variables('appGwId'))))))))]",
+                "probes": "[concat(createArray(createObject('name', 'shimHealthProbe', 'properties', createObject('protocol', 'Https', 'path', '/_shim/health', 'host', if(empty(parameters('shimFqdn')), format('shim.internal.{0}.azurecontainerapps.io', parameters('location')), parameters('shimFqdn')), 'interval', 30, 'timeout', 10, 'unhealthyThreshold', 3, 'match', createObject('statusCodes', createArray('200-399'))))), if(empty(parameters('controlPlaneFqdn')), createArray(), createArray(createObject('name', 'controlPlaneHealthProbe', 'properties', createObject('protocol', 'Https', 'path', '/health', 'host', parameters('controlPlaneFqdn'), 'interval', 30, 'timeout', 10, 'unhealthyThreshold', 3, 'match', createObject('statusCodes', createArray('200-399')))))))]",
+                "httpListeners": "[concat(createArray(createObject('name', 'appGatewayHttpsListener', 'properties', createObject('frontendIPConfiguration', createObject('id', format('{0}/frontendIPConfigurations/appGatewayFrontendIP', variables('appGwId'))), 'frontendPort', createObject('id', format('{0}/frontendPorts/appGatewayFrontendPort443', variables('appGwId'))), 'protocol', 'Https', 'sslCertificate', createObject('id', format('{0}/sslCertificates/appGatewaySslCert', variables('appGwId'))), 'hostNames', createArray(format('*.{0}', parameters('parentDomain')), reference(resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv'))), '2023-11-01').dnsSettings.fqdn), 'requireServerNameIndication', true()))), if(empty(parameters('controlPlaneFqdn')), createArray(), createArray(createObject('name', 'controlPlaneHttpsListener', 'properties', createObject('frontendIPConfiguration', createObject('id', format('{0}/frontendIPConfigurations/appGatewayFrontendIP', variables('appGwId'))), 'frontendPort', createObject('id', format('{0}/frontendPorts/appGatewayFrontendPort443', variables('appGwId'))), 'protocol', 'Https', 'sslCertificate', createObject('id', format('{0}/sslCertificates/appGatewaySslCert', variables('appGwId'))), 'hostNames', createArray(format('{0}.{1}', parameters('controlPlaneHostnamePrefix'), parameters('parentDomain'))), 'requireServerNameIndication', true())))))]",
+                "requestRoutingRules": "[concat(createArray(createObject('name', 'appGatewayRoutingRule', 'properties', createObject('ruleType', 'Basic', 'priority', 100, 'httpListener', createObject('id', format('{0}/httpListeners/appGatewayHttpsListener', variables('appGwId'))), 'backendAddressPool', createObject('id', format('{0}/backendAddressPools/appGatewayBackendPool', variables('appGwId'))), 'backendHttpSettings', createObject('id', format('{0}/backendHttpSettingsCollection/appGatewayBackendHttpSettings', variables('appGwId')))))), if(empty(parameters('controlPlaneFqdn')), createArray(), createArray(createObject('name', 'controlPlaneRoutingRule', 'properties', createObject('ruleType', 'Basic', 'priority', 50, 'httpListener', createObject('id', format('{0}/httpListeners/controlPlaneHttpsListener', variables('appGwId'))), 'backendAddressPool', createObject('id', format('{0}/backendAddressPools/controlPlaneBackendPool', variables('appGwId'))), 'backendHttpSettings', createObject('id', format('{0}/backendHttpSettingsCollection/controlPlaneBackendHttpSettings', variables('appGwId'))))))))]",
                 "sslCertificates": [
                   {
                     "name": "appGatewaySslCert",
@@ -2661,6 +2630,7 @@
         }
       },
       "dependsOn": [
+        "acaEnvironment",
         "bootstrapKvRbac",
         "managedIdentity",
         "network",
@@ -2692,6 +2662,10 @@
           "appGatewayPrivateLinkResourceId": {
             "value": ""
           },
+          "deployCustomDomain": {
+            "value": "[parameters('deployCustomDomain')]"
+          },
+          "certKvSecretId": "[if(parameters('deployCustomDomain'), createObject('value', resourceId(subscription().subscriptionId, parameters('bootstrapResourceGroupName'), 'Microsoft.KeyVault/vaults/secrets', parameters('bootstrapKvName'), parameters('tlsCertName'))), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -2703,7 +2677,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "576209395943324143"
+              "templateHash": "18442333839422967471"
             }
           },
           "parameters": {
@@ -2749,7 +2723,14 @@
               "type": "bool",
               "defaultValue": false,
               "metadata": {
-                "description": "Whether to attach the wildcard custom domain. Defaults to false because Front Door ManagedCertificate does not support wildcard hostnames, and CustomerCertificate setup requires KV access wired up via the FD profile MI. Set true after DNS delegation + a real cert + role assignments are in place (pass 2)."
+                "description": "Whether to attach the wildcard + apex custom domains. Defaults to false because Front Door ManagedCertificate does not support wildcard hostnames; the customer-cert path requires the FD profile MI to have Key Vault Secrets User on the source KV (granted in role-assignments). Set true after a real cert exists in KV and the role assignment has propagated (pass 2)."
+              }
+            },
+            "certKvSecretId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Resource ID of the Key Vault secret holding the TLS cert (e.g. /subscriptions/.../vaults/kv-rac-bootstrap-001/secrets/rac-dev-tls). Required when deployCustomDomain=true. Versionless — FD pins useLatestVersion=true so a re-issued cert is picked up automatically."
               }
             }
           },
@@ -2762,6 +2743,9 @@
               "tags": "[parameters('tags')]",
               "sku": {
                 "name": "Premium_AzureFrontDoor"
+              },
+              "identity": {
+                "type": "SystemAssigned"
               }
             },
             {
@@ -2801,7 +2785,6 @@
                 "hostName": "[parameters('appGatewayPublicFqdn')]",
                 "httpPort": 80,
                 "httpsPort": 443,
-                "originHostHeader": "[parameters('appGatewayPublicFqdn')]",
                 "priority": 1,
                 "weight": 1000,
                 "enabledState": "Enabled",
@@ -2829,13 +2812,32 @@
                 "linkToDefaultDomain": "Enabled",
                 "httpsRedirect": "Enabled",
                 "enabledState": "Enabled",
-                "customDomains": "[if(parameters('deployCustomDomain'), createArray(createObject('id', resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv'))))), createArray())]"
+                "customDomains": "[if(parameters('deployCustomDomain'), createArray(createObject('id', resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv')))), createObject('id', resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-apex-{0}', parameters('racEnv'))))), createArray())]"
               },
               "dependsOn": [
+                "[resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-apex-{0}', parameters('racEnv')))]",
                 "[resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv')))]",
                 "[resourceId('Microsoft.Cdn/profiles/afdEndpoints', format('afd-rac-{0}', parameters('racEnv')), format('afd-endpoint-{0}', parameters('racEnv')))]",
                 "[resourceId('Microsoft.Cdn/profiles/originGroups/origins', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')), format('origin-appgw-{0}', parameters('racEnv')))]",
                 "[resourceId('Microsoft.Cdn/profiles/originGroups', format('afd-rac-{0}', parameters('racEnv')), format('og-appgw-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "condition": "[parameters('deployCustomDomain')]",
+              "type": "Microsoft.Cdn/profiles/secrets",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', format('afd-rac-{0}', parameters('racEnv')), format('cert-rac-{0}', parameters('racEnv')))]",
+              "properties": {
+                "parameters": {
+                  "type": "CustomerCertificate",
+                  "useLatestVersion": true,
+                  "secretSource": {
+                    "id": "[parameters('certKvSecretId')]"
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv')))]"
               ]
             },
             {
@@ -2846,11 +2848,35 @@
               "properties": {
                 "hostName": "[format('*.{0}', parameters('parentDomain'))]",
                 "tlsSettings": {
-                  "certificateType": "ManagedCertificate",
-                  "minimumTlsVersion": "TLS12"
+                  "certificateType": "CustomerCertificate",
+                  "minimumTlsVersion": "TLS12",
+                  "secret": {
+                    "id": "[resourceId('Microsoft.Cdn/profiles/secrets', format('afd-rac-{0}', parameters('racEnv')), format('cert-rac-{0}', parameters('racEnv')))]"
+                  }
                 }
               },
               "dependsOn": [
+                "[resourceId('Microsoft.Cdn/profiles/secrets', format('afd-rac-{0}', parameters('racEnv')), format('cert-rac-{0}', parameters('racEnv')))]",
+                "[resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv')))]"
+              ]
+            },
+            {
+              "condition": "[parameters('deployCustomDomain')]",
+              "type": "Microsoft.Cdn/profiles/customDomains",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', format('afd-rac-{0}', parameters('racEnv')), format('domain-apex-{0}', parameters('racEnv')))]",
+              "properties": {
+                "hostName": "[parameters('parentDomain')]",
+                "tlsSettings": {
+                  "certificateType": "CustomerCertificate",
+                  "minimumTlsVersion": "TLS12",
+                  "secret": {
+                    "id": "[resourceId('Microsoft.Cdn/profiles/secrets', format('afd-rac-{0}', parameters('racEnv')), format('cert-rac-{0}', parameters('racEnv')))]"
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Cdn/profiles/secrets', format('afd-rac-{0}', parameters('racEnv')), format('cert-rac-{0}', parameters('racEnv')))]",
                 "[resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv')))]"
               ]
             },
@@ -2931,6 +2957,27 @@
                 "description": "WAF Policy resource ID"
               },
               "value": "[resourceId('Microsoft.Network/FrontDoorWebApplicationFirewallPolicies', format('wafrac{0}', parameters('racEnv')))]"
+            },
+            "frontDoorMiPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Front Door profile system-assigned MI principal ID (for KV role assignments)"
+              },
+              "value": "[reference(resourceId('Microsoft.Cdn/profiles', format('afd-rac-{0}', parameters('racEnv'))), '2023-05-01', 'full').identity.principalId]"
+            },
+            "wildcardDomainValidationToken": {
+              "type": "string",
+              "metadata": {
+                "description": "Wildcard custom domain validation token (TXT value to add at _dnsauth.<wildcard>) — empty when deployCustomDomain=false"
+              },
+              "value": "[coalesce(tryGet(if(parameters('deployCustomDomain'), reference(resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-wildcard-{0}', parameters('racEnv'))), '2023-05-01', 'full'), null()), 'properties', 'validationProperties', 'validationToken'), '')]"
+            },
+            "apexDomainValidationToken": {
+              "type": "string",
+              "metadata": {
+                "description": "Apex custom domain validation token (TXT value to add at _dnsauth.<apex>) — empty when deployCustomDomain=false"
+              },
+              "value": "[coalesce(tryGet(if(parameters('deployCustomDomain'), reference(resourceId('Microsoft.Cdn/profiles/customDomains', format('afd-rac-{0}', parameters('racEnv')), format('domain-apex-{0}', parameters('racEnv'))), '2023-05-01', 'full'), null()), 'properties', 'validationProperties', 'validationToken'), '')]"
             }
           }
         }
@@ -3117,7 +3164,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "823818030103199333"
+              "templateHash": "5631733029566100036"
             }
           },
           "parameters": {
@@ -3140,6 +3187,13 @@
               "defaultValue": "",
               "metadata": {
                 "description": "App Gateway managed identity principal ID (empty until MI is created)"
+              }
+            },
+            "frontDoorMiPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Front Door profile system-assigned MI principal ID (empty unless wiring FD CustomerCertificate from a KV)"
               }
             },
             "kvResourceId": {
@@ -3239,6 +3293,18 @@
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultCertificatesUser)]",
                 "principalId": "[parameters('appGwMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            "kvSecretsUserForFrontDoor": {
+              "condition": "[and(not(empty(parameters('frontDoorMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('frontDoorMiPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsUser)]",
+                "principalId": "[parameters('frontDoorMiPrincipalId')]",
                 "principalType": "ServicePrincipal"
               }
             },
@@ -3328,7 +3394,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "823818030103199333"
+              "templateHash": "5631733029566100036"
             }
           },
           "parameters": {
@@ -3351,6 +3417,13 @@
               "defaultValue": "",
               "metadata": {
                 "description": "App Gateway managed identity principal ID (empty until MI is created)"
+              }
+            },
+            "frontDoorMiPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Front Door profile system-assigned MI principal ID (empty unless wiring FD CustomerCertificate from a KV)"
               }
             },
             "kvResourceId": {
@@ -3453,6 +3526,18 @@
                 "principalType": "ServicePrincipal"
               }
             },
+            "kvSecretsUserForFrontDoor": {
+              "condition": "[and(not(empty(parameters('frontDoorMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('frontDoorMiPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsUser)]",
+                "principalId": "[parameters('frontDoorMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
             "tier3ContributorForControlPlane": {
               "condition": "[not(empty(parameters('controlPlaneMiPrincipalId')))]",
               "type": "Microsoft.Authorization/roleAssignments",
@@ -3507,6 +3592,231 @@
       "dependsOn": [
         "managedIdentity",
         "rgTier3"
+      ]
+    },
+    "roleAssignmentsBootstrap": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-roleassignments-bootstrap",
+      "resourceGroup": "[parameters('bootstrapResourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "frontDoorMiPrincipalId": {
+            "value": "[reference('frontDoor').outputs.frontDoorMiPrincipalId.value]"
+          },
+          "kvResourceId": {
+            "value": "[resourceId(subscription().subscriptionId, parameters('bootstrapResourceGroupName'), 'Microsoft.KeyVault/vaults', parameters('bootstrapKvName'))]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "5631733029566100036"
+            }
+          },
+          "parameters": {
+            "controlPlaneMiPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Control Plane managed identity principal ID (empty on first deploy; populated in Phase 5 Task 1 re-deploy)"
+              }
+            },
+            "shimMiPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Shim managed identity principal ID (empty on first deploy; populated in Phase 6)"
+              }
+            },
+            "appGwMiPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "App Gateway managed identity principal ID (empty until MI is created)"
+              }
+            },
+            "frontDoorMiPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Front Door profile system-assigned MI principal ID (empty unless wiring FD CustomerCertificate from a KV)"
+              }
+            },
+            "kvResourceId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Key Vault resource ID (platform Key Vault, for KV assignments only)"
+              }
+            }
+          },
+          "variables": {
+            "roleIds": {
+              "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
+              "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
+              "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+              "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
+              "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
+              "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+              "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
+              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+            }
+          },
+          "resources": {
+            "kv": {
+              "condition": "[not(empty(parameters('kvResourceId')))]",
+              "existing": true,
+              "type": "Microsoft.KeyVault/vaults",
+              "apiVersion": "2023-07-01",
+              "name": "[if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')]"
+            },
+            "kvCryptoOfficerForControlPlane": {
+              "condition": "[and(not(empty(parameters('controlPlaneMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('controlPlaneMiPrincipalId'), variables('roleIds').keyVaultCryptoOfficer)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultCryptoOfficer)]",
+                "principalId": "[parameters('controlPlaneMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            "kvSecretsUserForControlPlane": {
+              "condition": "[and(not(empty(parameters('controlPlaneMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('controlPlaneMiPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsUser)]",
+                "principalId": "[parameters('controlPlaneMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            "kvCryptoUserForShim": {
+              "condition": "[and(not(empty(parameters('shimMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('shimMiPrincipalId'), variables('roleIds').keyVaultCryptoUser)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultCryptoUser)]",
+                "principalId": "[parameters('shimMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            "kvSecretsUserForShim": {
+              "condition": "[and(not(empty(parameters('shimMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('shimMiPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsUser)]",
+                "principalId": "[parameters('shimMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            "kvSecretsUserForAppGw": {
+              "condition": "[and(not(empty(parameters('appGwMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('appGwMiPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsUser)]",
+                "principalId": "[parameters('appGwMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            "kvCertificatesUserForAppGw": {
+              "condition": "[and(not(empty(parameters('appGwMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('appGwMiPrincipalId'), variables('roleIds').keyVaultCertificatesUser)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultCertificatesUser)]",
+                "principalId": "[parameters('appGwMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            "kvSecretsUserForFrontDoor": {
+              "condition": "[and(not(empty(parameters('frontDoorMiPrincipalId'))), not(empty(parameters('kvResourceId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('frontDoorMiPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsUser)]",
+                "principalId": "[parameters('frontDoorMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            "tier3ContributorForControlPlane": {
+              "condition": "[not(empty(parameters('controlPlaneMiPrincipalId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, parameters('controlPlaneMiPrincipalId'), variables('roleIds').contributor)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').contributor)]",
+                "principalId": "[parameters('controlPlaneMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          },
+          "outputs": {
+            "kvCryptoOfficerRoleAssignmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault Crypto Officer role assignment resource ID (if created)"
+              },
+              "value": "[if(and(not(empty(parameters('controlPlaneMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('controlPlaneMiPrincipalId'), variables('roleIds').keyVaultCryptoOfficer)), '')]"
+            },
+            "kvCryptoUserRoleAssignmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault Crypto User role assignment resource ID (if created)"
+              },
+              "value": "[if(and(not(empty(parameters('shimMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('shimMiPrincipalId'), variables('roleIds').keyVaultCryptoUser)), '')]"
+            },
+            "kvSecretsUserRoleAssignmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault Secrets User role assignment for App Gateway (if created)"
+              },
+              "value": "[if(and(not(empty(parameters('appGwMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('appGwMiPrincipalId'), variables('roleIds').keyVaultSecretsUser)), '')]"
+            },
+            "kvCertificatesUserRoleAssignmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault Certificates User role assignment for App Gateway (if created)"
+              },
+              "value": "[if(and(not(empty(parameters('appGwMiPrincipalId'))), not(empty(parameters('kvResourceId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('kvResourceId'))), last(split(parameters('kvResourceId'), '/')), 'placeholder-kv')), parameters('appGwMiPrincipalId'), variables('roleIds').keyVaultCertificatesUser)), '')]"
+            },
+            "tier3ContributorRoleAssignmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "Tier 3 Contributor role assignment resource ID (if created)"
+              },
+              "value": "[if(not(empty(parameters('controlPlaneMiPrincipalId'))), resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, parameters('controlPlaneMiPrincipalId'), variables('roleIds').contributor)), '')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "frontDoor"
       ]
     },
     "alerts": {
@@ -4359,7 +4669,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "12431053579522809296"
+              "templateHash": "11059889710087756413"
             }
           },
           "parameters": {
@@ -4616,7 +4926,7 @@
                 "environmentId": "[parameters('managedEnvironmentId')]",
                 "configuration": {
                   "ingress": {
-                    "external": false,
+                    "external": true,
                     "targetPort": 8080,
                     "transport": "http"
                   },
@@ -4763,7 +5073,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "12168537418106820014"
+              "templateHash": "1034127280773738946"
             }
           },
           "parameters": {
@@ -4898,7 +5208,7 @@
                 "environmentId": "[parameters('managedEnvironmentId')]",
                 "configuration": {
                   "ingress": {
-                    "external": false,
+                    "external": true,
                     "targetPort": 8080,
                     "transport": "http"
                   },
@@ -5287,6 +5597,20 @@
         "description": "Control Plane ACA internal FQDN (empty when deployControlPlaneApp was false or no image)"
       },
       "value": "[coalesce(tryGet(if(and(parameters('deployControlPlaneApp'), not(empty(parameters('controlPlaneImageName')))), reference('controlPlaneAcaApp'), null()), 'outputs', 'controlPlaneFqdn', 'value'), '')]"
+    },
+    "frontDoorWildcardValidationToken": {
+      "type": "string",
+      "metadata": {
+        "description": "Front Door wildcard custom domain validation token (TXT for _dnsauth.<wildcard>) — empty when deployCustomDomain=false"
+      },
+      "value": "[reference('frontDoor').outputs.wildcardDomainValidationToken.value]"
+    },
+    "frontDoorApexValidationToken": {
+      "type": "string",
+      "metadata": {
+        "description": "Front Door apex custom domain validation token (TXT for _dnsauth.<apex>) — empty when deployCustomDomain=false"
+      },
+      "value": "[reference('frontDoor').outputs.apexDomainValidationToken.value]"
     }
   }
 }
