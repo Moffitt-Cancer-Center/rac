@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "15309363114416539570"
+      "templateHash": "4610590817829680037"
     },
     "__bicep_exported_variables!": [
       {
@@ -22,7 +22,9 @@
       "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
       "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
       "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
-      "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+      "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+      "acrPush": "8311e382-0749-4cb8-b61a-304f252e45ec",
+      "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
     }
   },
   "resources": []

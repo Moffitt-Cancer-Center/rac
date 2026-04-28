@@ -8,4 +8,6 @@ var roleIds = {
   contributor: 'b24988ac-6180-42a0-ab88-20f7382dd24c'
   storageAccountKeyOperatorServiceRole: '81a9662b-bebf-436f-a333-f67b29880f12'
   acrPull: '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+  acrPush: '8311e382-0749-4cb8-b61a-304f252e45ec'
+  storageBlobDataContributor: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 }
