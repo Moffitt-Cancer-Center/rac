@@ -448,6 +448,7 @@ def _make_retry_settings(
     gh_pipeline_owner: str = "test-org",
     gh_pipeline_repo: str = "rac-pipeline",
     kv_uri: str = "https://test-kv.vault.azure.net/",
+    pipeline_kv_uri: str = "https://test-kv.vault.azure.net/",
     callback_base_url: str = "https://cp.rac.example.org",
     pipeline_timeout_minutes: int = 60,
 ) -> Any:
@@ -470,6 +471,7 @@ def _make_retry_settings(
     settings.gh_pipeline_owner = gh_pipeline_owner
     settings.gh_pipeline_repo = gh_pipeline_repo
     settings.kv_uri = kv_uri
+    settings.pipeline_kv_uri = pipeline_kv_uri
     settings.callback_base_url = callback_base_url
     settings.pipeline_timeout_minutes = pipeline_timeout_minutes
     return settings
@@ -487,10 +489,10 @@ async def test_retry_dispatch_no_pat_raises_unavailable() -> None:
     settings = _make_retry_settings(gh_pat_value=None)
 
     with patch(
-        "rac_control_plane.services.pipeline_dispatch.retry.mint_callback_secret",
+        "rac_control_plane.services.pipeline_dispatch.dispatch_helper.mint_callback_secret",
         new=AsyncMock(),
     ) as mock_mint, patch(
-        "rac_control_plane.services.pipeline_dispatch.retry.gh_dispatch.dispatch",
+        "rac_control_plane.services.pipeline_dispatch.dispatch_helper.gh_dispatch.dispatch",
         new=AsyncMock(),
     ) as mock_dispatch:
         with pytest.raises(DispatchUnavailableError, match="RAC_GH_PAT"):
@@ -510,19 +512,19 @@ async def test_retry_dispatch_happy_path_mints_and_dispatches() -> None:
     settings = _make_retry_settings(gh_pat_value="ghp_xyz")
 
     with patch(
-        "rac_control_plane.services.pipeline_dispatch.retry.mint_callback_secret",
+        "rac_control_plane.services.pipeline_dispatch.dispatch_helper.mint_callback_secret",
         new=AsyncMock(return_value=(f"rac-pipeline-cb-{sub_id}", "secret-hex")),
     ) as mock_mint, patch(
-        "rac_control_plane.services.pipeline_dispatch.retry.gh_dispatch.dispatch",
+        "rac_control_plane.services.pipeline_dispatch.dispatch_helper.gh_dispatch.dispatch",
         new=AsyncMock(),
     ) as mock_dispatch:
         result = await retry_dispatch(submission, settings=settings, admin_oid="admin-1")
 
-    # Mint was called with the submission id and the right kv_uri
+    # Mint was called with the submission id and the right pipeline_kv_uri
     mock_mint.assert_awaited_once()
     mint_kwargs = mock_mint.await_args.kwargs
     assert mock_mint.await_args.args[0] == sub_id
-    assert mint_kwargs["kv_uri"] == "https://test-kv.vault.azure.net/"
+    assert mint_kwargs["kv_uri"] == "https://test-kv.vault.azure.net/"  # pipeline_kv_uri passed as kv_uri param
     assert mint_kwargs["expiry_minutes"] == 120  # 2 × pipeline_timeout_minutes
 
     # Dispatch was called with owner, repo, payload, auth_token
