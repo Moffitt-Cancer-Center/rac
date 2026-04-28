@@ -1,9 +1,11 @@
 # pattern: Imperative Shell
-"""Provisioning admin API routes.
+"""Submission admin API routes.
 
 Endpoints:
 - POST /admin/submissions/{id}/provisioning/retry
 - GET  /admin/submissions/failed-provisions
+- POST /admin/submissions/{id}/force-finalize
+- POST /admin/submissions/{id}/dispatch/retry
 """
 
 from __future__ import annotations
@@ -22,7 +24,12 @@ from rac_control_plane.auth.principal import Principal
 from rac_control_plane.data.db import get_session
 from rac_control_plane.data.models import SubmissionStatus
 from rac_control_plane.data.submission_repo import get_by_id
-from rac_control_plane.errors import ConflictError, NotFoundError
+from rac_control_plane.errors import ConflictError, NotFoundError, ServiceUnavailableError
+from rac_control_plane.services.pipeline_dispatch.retry import (
+    DispatchUnavailableError,
+    retry_dispatch,
+)
+from rac_control_plane.settings import get_settings
 from rac_control_plane.services.provisioning.orchestrator import provision_submission
 from rac_control_plane.services.submissions.finalize import finalize_submission
 
@@ -237,4 +244,73 @@ async def force_finalize(
     return ForceFinalizeResponse(
         submission_id=sub_uuid,
         new_status=str(new_status),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/submissions/{id}/dispatch/retry
+# ---------------------------------------------------------------------------
+
+
+class DispatchRetryResponse(BaseModel):
+    """Response from a pipeline-dispatch retry call."""
+
+    submission_id: str
+    callback_url: str
+    dispatched_at: str
+
+
+@router.post(
+    "/submissions/{submission_id}/dispatch/retry",
+    response_model=DispatchRetryResponse,
+)
+async def retry_pipeline_dispatch(
+    submission_id: str,
+    principal: Annotated[Principal, Depends(require_admin)],
+    session: AsyncSession = Depends(get_session),
+) -> DispatchRetryResponse:
+    """Re-dispatch the build-and-scan pipeline for a stuck submission.
+
+    Used to recover submissions stuck in awaiting_scan because the original
+    dispatch was skipped (no PAT) or failed (transient GH API error).
+
+    Auth: admin role required.
+    Only allowed when submission is in 'awaiting_scan' state.
+
+    Raises:
+        404: Submission not found.
+        409: Submission not in 'awaiting_scan' state.
+        503: Pipeline dispatch is not configured (no auth token).
+        403: Principal lacks admin role.
+    """
+    try:
+        sub_uuid = UUID(submission_id)
+    except ValueError as exc:
+        raise NotFoundError(public_message="Submission not found") from exc
+
+    submission = await get_by_id(session, sub_uuid)
+    if submission is None:
+        raise NotFoundError(public_message="Submission not found")
+
+    if submission.status != SubmissionStatus.awaiting_scan:
+        raise ConflictError(
+            public_message=(
+                f"Cannot retry dispatch: submission is in state "
+                f"'{submission.status}', expected 'awaiting_scan'"
+            )
+        )
+
+    try:
+        result = await retry_dispatch(
+            submission,
+            settings=get_settings(),
+            admin_oid=str(principal.oid),
+        )
+    except DispatchUnavailableError as exc:
+        raise ServiceUnavailableError(public_message=str(exc)) from exc
+
+    return DispatchRetryResponse(
+        submission_id=result["submission_id"],
+        callback_url=result["callback_url"],
+        dispatched_at=result["dispatched_at"],
     )

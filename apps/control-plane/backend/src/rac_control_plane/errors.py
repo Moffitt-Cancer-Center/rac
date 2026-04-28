@@ -121,6 +121,24 @@ class ConflictError(ApiError):
         super().__init__(code="conflict", http_status=409, public_message=public_message)
 
 
+class ServiceUnavailableError(ApiError):
+    """503: Service unavailable.
+
+    Use when a downstream dependency the request needs is not configured or
+    is currently unreachable, and surfacing that loudly is more useful than
+    silently no-op'ing or returning a 500.
+    """
+
+    __slots__ = ()
+
+    def __init__(self, public_message: str) -> None:
+        super().__init__(
+            code="service_unavailable",
+            http_status=503,
+            public_message=public_message,
+        )
+
+
 def render_error(exc: ApiError, correlation_id: str) -> dict[str, object]:
     """Render API error to a safe response dict with correlation ID.
 

@@ -121,7 +121,11 @@ def test_build_dispatch_payload_shape() -> None:
 
 
 def test_build_dispatch_payload_callback_url_format() -> None:
-    """callback_url is /webhooks/pipeline-callback/{submission_id}."""
+    """callback_url is /api/webhooks/pipeline-callback/{submission_id}.
+
+    The handler is registered under the /api prefix (see main.py); the
+    payload must agree, otherwise the SPA fallback swallows the request.
+    """
     sub_id = uuid4()
     submission = _make_submission(id=sub_id)
     payload = build_dispatch_payload(
@@ -129,7 +133,7 @@ def test_build_dispatch_payload_callback_url_format() -> None:
         callback_base_url="https://cp.rac.example.org/",  # trailing slash handled
         callback_secret_name="s",
     )
-    expected_url = f"https://cp.rac.example.org/webhooks/pipeline-callback/{sub_id}"
+    expected_url = f"https://cp.rac.example.org/api/webhooks/pipeline-callback/{sub_id}"
     assert payload["callback_url"] == expected_url, (
         f"Expected {expected_url!r}, got {payload['callback_url']!r}"
     )
@@ -431,3 +435,112 @@ async def test_create_submission_on_dispatch_422_fails_submission(
     assert rows[0].status == SubmissionStatus.pipeline_error, (
         f"Expected status=pipeline_error, got {rows[0].status}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 11/12 — retry_dispatch helper unit tests
+# ---------------------------------------------------------------------------
+
+
+def _make_retry_settings(
+    *,
+    gh_pat_value: str | None = "ghp_test_token_value",
+    gh_pipeline_owner: str = "test-org",
+    gh_pipeline_repo: str = "rac-pipeline",
+    kv_uri: str = "https://test-kv.vault.azure.net/",
+    callback_base_url: str = "https://cp.rac.example.org",
+    pipeline_timeout_minutes: int = 60,
+) -> Any:
+    """Build a Settings-like duck for retry_dispatch.
+
+    gh_pat is a SecretStr-like object exposing get_secret_value(); pass None
+    via gh_pat_value to simulate the unconfigured-PAT case.
+    """
+    pat: Any
+    if gh_pat_value is None:
+        pat = None
+    else:
+        pat = MagicMock()
+        pat.get_secret_value = MagicMock(return_value=gh_pat_value)
+        # Truthy
+        pat.__bool__ = MagicMock(return_value=True)
+
+    settings = MagicMock()
+    settings.gh_pat = pat
+    settings.gh_pipeline_owner = gh_pipeline_owner
+    settings.gh_pipeline_repo = gh_pipeline_repo
+    settings.kv_uri = kv_uri
+    settings.callback_base_url = callback_base_url
+    settings.pipeline_timeout_minutes = pipeline_timeout_minutes
+    return settings
+
+
+@pytest.mark.asyncio
+async def test_retry_dispatch_no_pat_raises_unavailable() -> None:
+    """No PAT configured → DispatchUnavailableError, never touches dispatch/KV."""
+    from rac_control_plane.services.pipeline_dispatch.retry import (
+        DispatchUnavailableError,
+        retry_dispatch,
+    )
+
+    submission = _make_submission()
+    settings = _make_retry_settings(gh_pat_value=None)
+
+    with patch(
+        "rac_control_plane.services.pipeline_dispatch.retry.mint_callback_secret",
+        new=AsyncMock(),
+    ) as mock_mint, patch(
+        "rac_control_plane.services.pipeline_dispatch.retry.gh_dispatch.dispatch",
+        new=AsyncMock(),
+    ) as mock_dispatch:
+        with pytest.raises(DispatchUnavailableError, match="RAC_GH_PAT"):
+            await retry_dispatch(submission, settings=settings, admin_oid="admin-1")
+
+    assert mock_mint.await_count == 0
+    assert mock_dispatch.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_retry_dispatch_happy_path_mints_and_dispatches() -> None:
+    """Mints fresh secret, dispatches with auth_token, returns dict."""
+    from rac_control_plane.services.pipeline_dispatch.retry import retry_dispatch
+
+    sub_id = uuid4()
+    submission = _make_submission(id=sub_id)
+    settings = _make_retry_settings(gh_pat_value="ghp_xyz")
+
+    with patch(
+        "rac_control_plane.services.pipeline_dispatch.retry.mint_callback_secret",
+        new=AsyncMock(return_value=(f"rac-pipeline-cb-{sub_id}", "secret-hex")),
+    ) as mock_mint, patch(
+        "rac_control_plane.services.pipeline_dispatch.retry.gh_dispatch.dispatch",
+        new=AsyncMock(),
+    ) as mock_dispatch:
+        result = await retry_dispatch(submission, settings=settings, admin_oid="admin-1")
+
+    # Mint was called with the submission id and the right kv_uri
+    mock_mint.assert_awaited_once()
+    mint_kwargs = mock_mint.await_args.kwargs
+    assert mock_mint.await_args.args[0] == sub_id
+    assert mint_kwargs["kv_uri"] == "https://test-kv.vault.azure.net/"
+    assert mint_kwargs["expiry_minutes"] == 120  # 2 × pipeline_timeout_minutes
+
+    # Dispatch was called with owner, repo, payload, auth_token
+    mock_dispatch.assert_awaited_once()
+    d_args = mock_dispatch.await_args.args
+    d_kwargs = mock_dispatch.await_args.kwargs
+    assert d_args[0] == "test-org"
+    assert d_args[1] == "rac-pipeline"
+    assert d_args[2]["submission_id"] == str(sub_id)
+    assert d_args[2]["callback_secret_name"] == f"rac-pipeline-cb-{sub_id}"
+    assert d_args[2]["callback_url"].endswith(
+        f"/api/webhooks/pipeline-callback/{sub_id}"
+    )
+    assert d_kwargs["auth_token"] == "ghp_xyz"
+
+    # Return shape
+    assert result["submission_id"] == str(sub_id)
+    assert result["callback_url"].endswith(
+        f"/api/webhooks/pipeline-callback/{sub_id}"
+    )
+    assert "dispatched_at" in result

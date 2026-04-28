@@ -38,7 +38,7 @@ def build_dispatch_payload(
         "slug": submission.slug,
         "callback_url": (
             f"{callback_base_url.rstrip('/')}"
-            f"/webhooks/pipeline-callback/{submission_id}"
+            f"/api/webhooks/pipeline-callback/{submission_id}"
         ),
         "callback_secret_name": callback_secret_name,
     }
