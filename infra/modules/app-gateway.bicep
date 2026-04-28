@@ -29,6 +29,9 @@ param controlPlaneFqdn string = ''
 @description('Hostname (subdomain prefix) the control plane is reachable at, e.g. "cp" → cp.<parentDomain>. AppGw uses this to build the specific-host listener that takes precedence over the *.<parentDomain> wildcard listener.')
 param controlPlaneHostnamePrefix string = 'cp'
 
+@description('Log Analytics workspace resource ID for diagnostic settings (access/firewall/performance logs + metrics).')
+param logAnalyticsWorkspaceId string
+
 @description('Resource tags')
 param tags object
 
@@ -344,6 +347,38 @@ resource appGateway 'Microsoft.Network/applicationGateways@2023-11-01' = {
     firewallPolicy: {
       id: wafPolicy.id
     }
+  }
+}
+
+// Diagnostic settings: stream access / performance / firewall logs + metrics to
+// Log Analytics. WAF firewall events are otherwise nowhere queryable (the only
+// way to identify the rule that fired on a Detection-mode hit or to confirm a
+// Prevention-mode block was the WAF and not the upstream).
+resource appGatewayDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'diag-appgw-to-la'
+  scope: appGateway
+  properties: {
+    workspaceId: logAnalyticsWorkspaceId
+    logs: [
+      {
+        category: 'ApplicationGatewayAccessLog'
+        enabled: true
+      }
+      {
+        category: 'ApplicationGatewayPerformanceLog'
+        enabled: true
+      }
+      {
+        category: 'ApplicationGatewayFirewallLog'
+        enabled: true
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+      }
+    ]
   }
 }
 

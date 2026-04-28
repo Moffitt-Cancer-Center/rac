@@ -383,6 +383,7 @@ module appGateway 'modules/app-gateway.bicep' = {
     controlPlaneFqdn: deployControlPlaneApp && !empty(controlPlaneImageName)
       ? 'rac-control-plane-${racEnv}.${acaEnvironment.outputs.envDefaultDomain}'
       : ''
+    logAnalyticsWorkspaceId: logAnalytics.outputs.workspaceId
     tags: commonTags
   }
 }
