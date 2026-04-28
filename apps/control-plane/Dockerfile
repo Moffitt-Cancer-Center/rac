@@ -77,27 +77,41 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Copy virtual environment from builder
-COPY --from=be-builder /app/.venv /app/.venv
+# `git` is needed at runtime by the detection-rules engine, which clones the
+# submitted GitHub repo to a tmpdir before running rules over it. Without it,
+# every submission logs FileNotFoundError: 'git' and falls through to "no
+# detection ran" — which is silent on the user side.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy backend source
-COPY apps/control-plane/backend/src /app/src
+# Create non-root user up front so all COPY layers below can use --chown=10001
+# without having to recursively chown afterwards. The recursive chown over the
+# .venv (~thousands of Python package files) would otherwise dominate every
+# build at ~8 minutes — and this layer sits below COPY-of-source so the chown
+# layer was never cache-hit. Using --chown on each COPY does the ownership
+# work at copy time and lets BuildKit cache each layer independently on its
+# content hash. The .venv layer is the largest by far, and now it only re-runs
+# when uv.lock / pyproject.toml change.
+RUN useradd -u 10001 -m -s /sbin/nologin appuser
+
+# Copy virtual environment from builder (cached on .venv content hash)
+COPY --from=be-builder --chown=10001:10001 /app/.venv /app/.venv
+
+# Copy backend source (small; chowned at copy time)
+COPY --chown=10001:10001 apps/control-plane/backend/src /app/src
 
 # Copy alembic migration assets so `alembic upgrade head` can be run from
 # inside the container via `az containerapp exec` against the deployed PG.
-COPY apps/control-plane/backend/alembic.ini /app/alembic.ini
-COPY apps/control-plane/backend/migrations /app/migrations
+COPY --chown=10001:10001 apps/control-plane/backend/alembic.ini /app/alembic.ini
+COPY --chown=10001:10001 apps/control-plane/backend/migrations /app/migrations
 
 # Copy built frontend SPA from fe-builder
-COPY --from=fe-builder /app/frontend/dist /app/src/rac_control_plane/static
+COPY --from=fe-builder --chown=10001:10001 /app/frontend/dist /app/src/rac_control_plane/static
 
 # Set up Python path and activate venv
 ENV PYTHONPATH=/app/src
 ENV PATH="/app/.venv/bin:$PATH"
-
-# Create non-root user
-RUN useradd -u 10001 -m -s /sbin/nologin appuser && \
-    chown -R appuser:appuser /app
 
 USER appuser
 
