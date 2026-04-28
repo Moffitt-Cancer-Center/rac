@@ -118,3 +118,61 @@ def test_settings_env_var_prefix() -> None:
         for key in list(os.environ.keys()):
             if key.startswith("RAC_"):
                 del os.environ[key]
+
+
+def test_pipeline_kv_uri_defaults_to_empty_string() -> None:
+    """pipeline_kv_uri defaults to empty string when RAC_PIPELINE_KV_URI is not set."""
+    settings = Settings(
+        env="dev",
+        institution_name="Test Org",
+        parent_domain="example.com",
+        brand_logo_url="https://example.com/logo.png",
+        idp_tenant_id="tenant-id",
+        idp_client_id="client-id",
+        idp_api_client_id="api-client-id",
+        pg_host="localhost",
+        pg_db="testdb",
+        pg_user="user",
+        pg_password="password",
+        kv_uri="https://kv.vault.azure.net/",
+        blob_account_url="https://blob.azure.com/",
+        acr_login_server="acr.azurecr.io",
+        aca_env_resource_id="/subscriptions/sub/resourceGroups/rg/providers/Microsoft.App/managedEnvironments/env",
+        scan_severity_gate="high",
+        approver_role_research="ResearchApprover",
+        approver_role_it="ITApprover",
+    )
+
+    assert settings.pipeline_kv_uri == ""
+
+
+def test_pipeline_kv_uri_loaded_from_env() -> None:
+    """pipeline_kv_uri loads from RAC_PIPELINE_KV_URI environment variable."""
+    os.environ["RAC_ENV"] = "dev"
+    os.environ["RAC_INSTITUTION_NAME"] = "Test Org"
+    os.environ["RAC_PARENT_DOMAIN"] = "example.com"
+    os.environ["RAC_BRAND_LOGO_URL"] = "https://example.com/logo.png"
+    os.environ["RAC_IDP_TENANT_ID"] = "tenant-id"
+    os.environ["RAC_IDP_CLIENT_ID"] = "client-id"
+    os.environ["RAC_IDP_API_CLIENT_ID"] = "api-client-id"
+    os.environ["RAC_PG_HOST"] = "localhost"
+    os.environ["RAC_PG_DB"] = "testdb"
+    os.environ["RAC_PG_USER"] = "user"
+    os.environ["RAC_PG_PASSWORD"] = "password"
+    os.environ["RAC_KV_URI"] = "https://kv.vault.azure.net/"
+    os.environ["RAC_BLOB_ACCOUNT_URL"] = "https://blob.azure.com/"
+    os.environ["RAC_ACR_LOGIN_SERVER"] = "acr.azurecr.io"
+    os.environ["RAC_ACA_ENV_RESOURCE_ID"] = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.App/managedEnvironments/env"
+    os.environ["RAC_SCAN_SEVERITY_GATE"] = "high"
+    os.environ["RAC_APPROVER_ROLE_RESEARCH"] = "ResearchApprover"
+    os.environ["RAC_APPROVER_ROLE_IT"] = "ITApprover"
+    os.environ["RAC_PIPELINE_KV_URI"] = "https://kv-rac-pipeline-foo-dev.vault.azure.net/"
+
+    try:
+        settings = Settings()
+        assert settings.pipeline_kv_uri == "https://kv-rac-pipeline-foo-dev.vault.azure.net/"
+    finally:
+        # Clean up environment
+        for key in list(os.environ.keys()):
+            if key.startswith("RAC_"):
+                del os.environ[key]

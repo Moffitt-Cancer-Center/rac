@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
     # Azure settings
     kv_uri: str
+    pipeline_kv_uri: str = ""
     blob_account_url: str
     acr_login_server: str
     aca_env_resource_id: str
