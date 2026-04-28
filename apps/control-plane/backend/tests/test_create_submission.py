@@ -2,13 +2,13 @@
 
 Verifies:
 - test_agent_with_findings_does_not_dispatch: when detection_fn transitions
-  submission to needs_user_action, dispatch_fn is NOT called.
+  submission to needs_user_action, dispatch_for_submission is NOT called.
 - test_interactive_with_no_findings_does_dispatch: clean interactive-user path
-  with zero findings still dispatches the pipeline.
+  with zero findings still dispatches the pipeline via dispatch_for_submission.
 """
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -27,7 +27,10 @@ def _make_settings_mock() -> MagicMock:
     m.callback_base_url = "http://test"
     m.gh_pipeline_owner = "test-org"
     m.gh_pipeline_repo = "rac-pipeline"
-    m.gh_pat = None  # Not needed for dispatch_fn tests (dispatch_fn is already a mock)
+    m.gh_pat = MagicMock()
+    m.gh_pat.get_secret_value = MagicMock(return_value="ghp_test")
+    m.pipeline_kv_uri = "https://kv.vault.azure.net/"
+    m.pipeline_timeout_minutes = 120
     return m
 
 
@@ -61,14 +64,20 @@ def _make_request() -> SubmissionCreateRequest:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_agent_with_findings_does_not_dispatch(db_session: AsyncSession) -> None:
+async def test_agent_with_findings_does_not_dispatch(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Critical 2: detection transitions to needs_user_action → dispatch skipped.
 
     The detection_fn transitions the submission to needs_user_action.
-    The dispatch_fn must NOT be called because the submission is no longer
-    in awaiting_scan at Step 7.
+    The dispatch_for_submission must NOT be called because the submission is no
+    longer in awaiting_scan at Step 7.
     """
-    dispatch_fn = AsyncMock()
+    mock_dispatch = AsyncMock()
+    monkeypatch.setattr(
+        "rac_control_plane.services.submissions.create.dispatch_for_submission",
+        mock_dispatch,
+    )
 
     async def _fake_detection_fn(
         session: AsyncSession, submission: Submission
@@ -121,14 +130,14 @@ async def test_agent_with_findings_does_not_dispatch(db_session: AsyncSession) -
             _make_principal(kind="agent"),
             _make_request(),
             existing_slugs=set(),
-            dispatch_fn=dispatch_fn,
+            settings=_make_settings_mock(),
             detection_fn=_fake_detection_fn,
         )
 
     assert submission.status == SubmissionStatus.needs_user_action, (
         f"Expected needs_user_action, got {submission.status}"
     )
-    dispatch_fn.assert_not_called()
+    mock_dispatch.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -136,9 +145,15 @@ async def test_agent_with_findings_does_not_dispatch(db_session: AsyncSession) -
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_interactive_with_no_findings_does_dispatch(db_session: AsyncSession) -> None:
+async def test_interactive_with_no_findings_does_dispatch(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Critical 2: clean interactive-user path (no findings) still dispatches pipeline."""
-    dispatch_fn = AsyncMock()
+    mock_dispatch = AsyncMock()
+    monkeypatch.setattr(
+        "rac_control_plane.services.submissions.create.dispatch_for_submission",
+        mock_dispatch,
+    )
 
     async def _no_findings_detection_fn(
         session: AsyncSession, submission: Submission
@@ -164,11 +179,15 @@ async def test_interactive_with_no_findings_does_dispatch(db_session: AsyncSessi
             _make_principal(kind="user"),
             _make_request(),
             existing_slugs=set(),
-            dispatch_fn=dispatch_fn,
+            settings=_make_settings_mock(),
             detection_fn=_no_findings_detection_fn,
         )
 
     assert submission.status == SubmissionStatus.awaiting_scan, (
         f"Expected awaiting_scan, got {submission.status}"
     )
-    dispatch_fn.assert_called_once()
+    mock_dispatch.assert_called_once_with(
+        submission,
+        settings=ANY,
+        triggered_by="submission_created",
+    )

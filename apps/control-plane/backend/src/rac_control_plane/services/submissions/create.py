@@ -2,8 +2,8 @@
 """Submission creation service orchestrating validation and persistence.
 
 Combines pure slug derivation and validation with database writes.
-Optionally triggers the rac-pipeline via GitHub repository_dispatch after
-the DB row is committed.
+Triggers the rac-pipeline via the dispatch_for_submission helper after
+the DB row is committed (unconditional path).
 """
 
 
@@ -31,7 +31,12 @@ from rac_control_plane.manifest.parser import (
 from rac_control_plane.manifest.schema import ManifestV1
 from rac_control_plane.services.github_validation import validate_repo
 from rac_control_plane.services.ownership.pi_validation import ValidationResult
+from rac_control_plane.services.pipeline_dispatch.dispatch_helper import (
+    DispatchUnavailableError,
+    dispatch_for_submission,
+)
 from rac_control_plane.services.submissions.slug import derive_slug
+from rac_control_plane.settings import Settings
 
 logger = structlog.get_logger(__name__)
 
@@ -44,7 +49,7 @@ async def create_submission(
     *,
     parsed_manifest: ManifestV1 | None = None,
     emit_submission_metric: Callable[[str], None] | None = None,
-    dispatch_fn: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    settings: Settings,
     detection_fn: (
         Callable[[AsyncSession, Submission], Awaitable[list[DetectionFinding]]] | None
     ) = None,
@@ -58,19 +63,21 @@ async def create_submission(
     3. GitHub repository validation (impure, raises on error)
     4. Database write with approval_event (impure)
     5. Metric emission (impure, via callback)
-    6. Pipeline dispatch trigger (impure, via dispatch_fn callback)
+    6. Detection (impure, via callback)
+    7. Pipeline dispatch trigger (impure, via dispatch_for_submission helper)
 
     Args:
         session: SQLAlchemy async session
         principal: Current authenticated principal
         request: Submission creation request
         existing_slugs: Set of already-used slugs
+        parsed_manifest: Pre-validated ManifestV1. If None, validates request.manifest.
         emit_submission_metric: Optional callback to emit submission metric with status.
                                 Called with the submission status string.
-        dispatch_fn: Optional async callable that accepts the client_payload dict and
-                     triggers the GitHub repository_dispatch event.  When None, no
-                     dispatch is attempted (used in legacy code paths and tests that
-                     do not exercise the pipeline).
+        settings: Application Settings — required for dispatch (gh_pat, pipeline_kv_uri,
+                  callback_base_url, pipeline_timeout_minutes).
+        detection_fn: Optional async callable that runs detection rules. Called with
+                      (session, submission). When None, detection is skipped.
         validate_pi_fn: Optional async callable that validates the PI OID against
                         Microsoft Graph.  Called with ``request.pi_principal_id``
                         before the GitHub repo check.  When None, PI validation is
@@ -82,6 +89,7 @@ async def create_submission(
     Raises:
         ValidationApiError: If PI is invalid, repository not found, validation fails,
                             or payload is too large for GitHub dispatch.
+        DispatchUnavailableError: If gh_pat or pipeline_kv_uri is unset (caller maps to 503).
     """
     # Step 1: Validate PI via Graph (impure, optional, may raise)
     if validate_pi_fn is not None:
@@ -172,44 +180,25 @@ async def create_submission(
     if emit_submission_metric:
         emit_submission_metric(submission.status.value)
 
-    # Step 7: Trigger pipeline dispatch if a dispatch function was provided.
-    #
-    # dispatch_fn is called with the raw client_payload dict.  The caller
-    # (api/routes/submissions.py) is responsible for building that payload
-    # and scheduling the call via BackgroundTasks so the HTTP response is
-    # not blocked.  We expose the hook here so tests can inject a mock.
+    # Step 7: Trigger pipeline dispatch — single path through dispatch_for_submission.
+    # The helper mints the per-submission HMAC callback secret in the dedicated
+    # pipeline KV, builds the payload, and POSTs repository_dispatch. It raises
+    # DispatchUnavailableError if RAC_GH_PAT or RAC_PIPELINE_KV_URI is unset.
     #
     # Guard: only dispatch when submission is still awaiting_scan.  If
     # detection transitioned it to needs_user_action the pipeline must NOT
     # launch until the researcher resolves the findings (Critical 2 fix).
-    if dispatch_fn is not None and submission.status == SubmissionStatus.awaiting_scan:
-        # Build and invoke the dispatch payload inside the service so that
-        # all dispatch logic is centralised.  The session has already been
-        # flushed, so submission.id is available.
-        from rac_control_plane.services.pipeline_dispatch.payload import (
-            build_dispatch_payload,
-        )
-        from rac_control_plane.settings import get_settings
-
-        settings = get_settings()
-
-        # Build a temporary secret name placeholder — the real secret is
-        # minted by the caller (route layer) before the background task runs.
-        # The route layer passes a pre-built payload or a partially applied fn.
-        # Here we just build the payload dict and pass it to dispatch_fn.
-        secret_name_placeholder = f"rac-pipeline-cb-{submission.id}"
-        client_payload = build_dispatch_payload(
-            submission,
-            callback_base_url=settings.callback_base_url,
-            callback_secret_name=secret_name_placeholder,
-        )
-
+    if submission.status == SubmissionStatus.awaiting_scan:
         try:
-            await dispatch_fn(client_payload)
+            await dispatch_for_submission(
+                submission,
+                settings=settings,
+                triggered_by="submission_created",
+            )
         except ValidationApiError:
-            # Payload too large — mark submission failed, COMMIT the
-            # pipeline_error state so it survives the re-raise, and propagate
-            # so the route returns 422 to the user.
+            # Payload too large — mark submission failed, commit so the
+            # pipeline_error state survives the re-raise, and propagate so the
+            # route layer returns 422.
             submission.status = SubmissionStatus.pipeline_error
             await session.commit()
             logger.error(
@@ -217,9 +206,19 @@ async def create_submission(
                 submission_id=str(submission.id),
             )
             raise
+        except DispatchUnavailableError:
+            # Loud-fail: propagate so the route layer maps to 503.
+            # Re-raise BEFORE session.commit() — the submission row is
+            # rolled back (AC6.2: no orphan row). The helper raised BEFORE
+            # mint_callback_secret was called, so no orphan KV secret either
+            # (AC6.3). MUST come before the broad `except Exception` clause
+            # below — DispatchUnavailableError(Exception) inherits from
+            # Exception, so without this explicit clause the broad-catch
+            # would swallow it.
+            raise
         except Exception as exc:
             # 5xx / network error — log, leave submission as awaiting_scan.
-            # Operator retries via admin UI (Phase 5).
+            # Operator retries via the admin endpoint.
             logger.error(
                 "pipeline_dispatch_failed",
                 submission_id=str(submission.id),

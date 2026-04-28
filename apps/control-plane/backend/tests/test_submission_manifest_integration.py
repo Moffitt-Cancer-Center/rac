@@ -144,12 +144,24 @@ async def test_submission_shared_reference_rejected() -> None:
         },
     )
 
+    # Create a minimal mock settings
+    from unittest.mock import MagicMock as MM
+    settings_mock = MM()
+    settings_mock.gh_pat = MM()
+    settings_mock.gh_pat.get_secret_value = MM(return_value="ghp_test")
+    settings_mock.pipeline_kv_uri = "https://kv.vault.azure.net/"
+    settings_mock.callback_base_url = "http://test"
+    settings_mock.gh_pipeline_owner = "test-org"
+    settings_mock.gh_pipeline_repo = "rac-pipeline"
+    settings_mock.pipeline_timeout_minutes = 120
+
     with pytest.raises(ValidationApiError) as exc_info:
         await create_submission(
             session_mock,
             principal,
             request,
             existing_slugs=set(),
+            settings=settings_mock,
             validate_pi_fn=None,
         )
 

@@ -337,8 +337,17 @@ async def test_create_submission_dispatches(client, db_session, mock_oidc) -> No
 
     dispatch_calls: list[dict[str, Any]] = []
 
-    async def _fake_dispatch(payload: dict[str, Any]) -> None:
-        dispatch_calls.append(payload)
+    async def _fake_dispatch(submission: Any, *, settings: Any, triggered_by: str) -> dict[str, Any]:
+        # Capture the dispatched submission and triggered_by value
+        dispatch_calls.append({
+            "submission_id": str(submission.id),
+            "triggered_by": triggered_by,
+        })
+        return {
+            "submission_id": str(submission.id),
+            "callback_url": f"http://test/callbacks/{submission.id}",
+            "dispatched_at": datetime.now(timezone.utc).isoformat(),
+        }
 
     body = {
         "github_repo_url": "https://github.com/testowner/testrepo",
@@ -351,10 +360,10 @@ async def test_create_submission_dispatches(client, db_session, mock_oidc) -> No
 
     with _mock_github_repo_success() as mock:
         mock.start()
-        # Patch _build_dispatch_fn to return our fake coroutine
+        # Patch dispatch_for_submission directly in the create module
         with patch(
-            "rac_control_plane.api.routes.submissions._build_dispatch_fn",
-            return_value=_fake_dispatch,
+            "rac_control_plane.services.submissions.create.dispatch_for_submission",
+            side_effect=_fake_dispatch,
         ):
             response = await client.post("/api/submissions", json=body, headers=headers)
         mock.stop()
@@ -363,19 +372,15 @@ async def test_create_submission_dispatches(client, db_session, mock_oidc) -> No
     data = response.json()
     sub_id = data["id"]
 
-    # dispatch_fn was called (synchronously within the create flow)
+    # dispatch_for_submission was called
     assert len(dispatch_calls) == 1, (
-        f"Expected dispatch_fn called once, called {len(dispatch_calls)} times"
+        f"Expected dispatch_for_submission called once, called {len(dispatch_calls)} times"
     )
     dispatched = dispatch_calls[0]
     assert dispatched["submission_id"] == sub_id, (
         f"Dispatched submission_id={dispatched['submission_id']} != response id={sub_id}"
     )
-    assert str(sub_id) in dispatched["callback_url"]
-    assert "http://test" in dispatched["callback_url"]  # callback_base_url from test config
-    assert dispatched["repo_url"] == "https://github.com/testowner/testrepo"
-    assert dispatched["git_ref"] == "main"
-    assert dispatched["slug"] == data["slug"]
+    assert dispatched["triggered_by"] == "submission_created"
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +396,7 @@ async def test_create_submission_on_dispatch_422_fails_submission(
     token = mock_oidc.issue_user_token(oid=test_user_oid, roles=[])
     headers = {"Authorization": f"Bearer {token}"}
 
-    async def _raising_dispatch(payload: dict[str, Any]) -> None:
+    async def _raising_dispatch(submission: Any, *, settings: Any, triggered_by: str) -> None:
         raise ValidationApiError(
             code="pipeline_payload_too_large",
             public_message="Payload too large",
@@ -409,8 +414,8 @@ async def test_create_submission_on_dispatch_422_fails_submission(
     with _mock_github_repo_success() as mock:
         mock.start()
         with patch(
-            "rac_control_plane.api.routes.submissions._build_dispatch_fn",
-            return_value=_raising_dispatch,
+            "rac_control_plane.services.submissions.create.dispatch_for_submission",
+            side_effect=_raising_dispatch,
         ):
             response = await client.post("/api/submissions", json=body, headers=headers)
         mock.stop()

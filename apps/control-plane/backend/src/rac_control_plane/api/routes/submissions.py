@@ -30,8 +30,11 @@ from rac_control_plane.data.submission_repo import (
     get_existing_slugs,
     list_submissions,
 )
-from rac_control_plane.errors import ForbiddenError
+from rac_control_plane.errors import ForbiddenError, ServiceUnavailableError
 from rac_control_plane.metrics import submission_counter
+from rac_control_plane.services.pipeline_dispatch.dispatch_helper import (
+    DispatchUnavailableError,
+)
 from rac_control_plane.services.submissions.create import create_submission
 from rac_control_plane.settings import get_settings
 
@@ -76,34 +79,6 @@ def _make_detection_fn(
     return _do_detection
 
 
-def _build_dispatch_fn(
-    settings_snapshot: Any,
-) -> Any:
-    """Build a dispatch callable from current settings.
-
-    Returns an async callable (submission_id, payload) → None, or None
-    if dispatch is not configured (no PAT, no App credentials).
-    """
-    from rac_control_plane.services.pipeline_dispatch import github as gh_dispatch
-
-    auth_token: str | None = None
-    if settings_snapshot.gh_pat:
-        auth_token = settings_snapshot.gh_pat.get_secret_value()
-    # GitHub App auth would be resolved here when implemented (Phase 5+)
-
-    if not auth_token:
-        logger.warning("pipeline_dispatch_skipped_no_auth_token")
-        return None
-
-    owner = settings_snapshot.gh_pipeline_owner
-    repo = settings_snapshot.gh_pipeline_repo
-
-    async def _do_dispatch(payload: dict[str, Any]) -> None:
-        await gh_dispatch.dispatch(owner, repo, payload, auth_token=auth_token)
-
-    return _do_dispatch
-
-
 @router.post("", status_code=201, response_model=SubmissionResponse)
 async def post_submission(
     request: SubmissionCreateRequest,
@@ -141,9 +116,6 @@ async def post_submission(
     """
     settings = get_settings()
 
-    # Build dispatch function from settings (None if not configured)
-    dispatch_fn = _build_dispatch_fn(settings)
-
     # Build detection function — source rules from app.state.rules if populated,
     # else let _make_detection_fn call load_rules() lazily inside the closure.
     # Use a local import to avoid a circular import at module level.
@@ -168,18 +140,23 @@ async def post_submission(
         user = await graph_gateway.get_user(oid)
         return pi_validation.is_valid_pi(user)
 
-    # Create submission (may raise ValidationApiError)
-    # Pass metric callback to emit submission counter with the target status
-    submission = await create_submission(
-        session,
-        principal,
-        request,
-        existing_slugs,
-        emit_submission_metric=lambda status: submission_counter.add(1, {"status": status}),
-        dispatch_fn=dispatch_fn,
-        detection_fn=detection_fn,
-        validate_pi_fn=_validate_pi,
-    )
+    # Create submission. Production path internally calls
+    # dispatch_for_submission; missing RAC_GH_PAT / RAC_PIPELINE_KV_URI
+    # surfaces as DispatchUnavailableError → 503 here, BEFORE
+    # session.commit, so no DB row is left behind.
+    try:
+        submission = await create_submission(
+            session,
+            principal,
+            request,
+            existing_slugs,
+            settings=settings,
+            emit_submission_metric=lambda status: submission_counter.add(1, {"status": status}),
+            detection_fn=detection_fn,
+            validate_pi_fn=_validate_pi,
+        )
+    except DispatchUnavailableError as exc:
+        raise ServiceUnavailableError(public_message=str(exc)) from exc
 
     # Commit the transaction
     await session.commit()

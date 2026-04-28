@@ -92,6 +92,7 @@ async def app(monkeypatch, migrated_db, mock_oidc):
         "RAC_GH_PIPELINE_OWNER": "test-org",
         "RAC_GH_PIPELINE_REPO": "rac-pipeline",
         "RAC_GH_PAT": "ghp_test_token",
+        "RAC_PIPELINE_KV_URI": "https://test-pipeline-kv.vault.azure.net/",
         "RAC_CALLBACK_BASE_URL": "http://test",
         # Phase 7 settings
         "RAC_MAX_REVIEWER_TOKEN_TTL_DAYS": "180",
