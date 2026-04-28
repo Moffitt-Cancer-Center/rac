@@ -1,3 +1,5 @@
+extension 'br:mcr.microsoft.com/bicep/extensions/microsoftgraph/v1.0:0.1.8-preview'
+
 // ========== MODULE DOCUMENTATION ==========
 // pipeline-identity.bicep
 // Codifies trust + RBAC for the per-env pipeline Entra app reg.
@@ -45,9 +47,11 @@ param artifactsBlobContainerId string = ''
 
 // ========== EXISTING RESOURCE REFERENCES ==========
 
-resource pipelineApp 'Microsoft.Graph/applications@2022-04-01' existing = if (!empty(pipelineAppUniqueName)) {
-  name: pipelineAppUniqueName
-}
+// Note: the parent app reg (Microsoft.Graph/applications) is referenced
+// implicitly via the composite name '${pipelineAppUniqueName}/<fic-name>'.
+// We do not declare an `existing` symbolic reference because it would be
+// unused (Bicep linter flags it) and a guarded existing resource confuses
+// the null-flow analyzer (BCP318) when other resources reference it.
 
 resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = if (!empty(acrId)) {
   name: !empty(acrId) ? last(split(acrId, '/')) : 'placeholder-acr'
@@ -68,15 +72,12 @@ resource artifactsContainer 'Microsoft.Storage/storageAccounts/blobServices/cont
 
 // ========== FEDERATED IDENTITY CREDENTIAL ==========
 
-resource pipelineFic 'Microsoft.Graph/applications/federatedIdentityCredentials@2022-04-01' = if (!empty(pipelineAppUniqueName)) {
-  parent: pipelineApp
-  name: 'rac-pipeline-${racEnv}-gha'
-  properties: {
-    audiences: ['api://AzureADTokenExchange']
-    issuer: 'https://token.actions.githubusercontent.com'
-    subject: 'repo:${pipelineGithubOwner}/${pipelineGithubRepo}:environment:${racEnv}'
-    description: 'GitHub Actions OIDC for ${pipelineGithubOwner}/${pipelineGithubRepo} on environment ${racEnv}'
-  }
+resource pipelineFic 'Microsoft.Graph/applications/federatedIdentityCredentials@v1.0' = if (!empty(pipelineAppUniqueName)) {
+  name: '${pipelineAppUniqueName}/rac-pipeline-${racEnv}-gha'
+  audiences: ['api://AzureADTokenExchange']
+  issuer: 'https://token.actions.githubusercontent.com'
+  subject: 'repo:${pipelineGithubOwner}/${pipelineGithubRepo}:environment:${racEnv}'
+  description: 'GitHub Actions OIDC for ${pipelineGithubOwner}/${pipelineGithubRepo} on environment ${racEnv}'
 }
 
 // ========== ROLE ASSIGNMENTS ==========
@@ -124,7 +125,7 @@ resource raBlobContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' 
 // ========== OUTPUTS ==========
 
 @description('FIC resource ID (empty when pipelineAppUniqueName is empty)')
-output ficResourceId string = !empty(pipelineAppUniqueName) ? pipelineFic.id : ''
+output ficResourceId string = pipelineFic.?id ?? ''
 
 @description('Resource IDs of the four role assignments. Empty strings for those skipped by guards.')
 output roleAssignmentIds array = [

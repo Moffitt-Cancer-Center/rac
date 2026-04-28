@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "14688886465072158013"
+      "templateHash": "15774835300614319325"
     }
   },
   "parameters": {
@@ -79,14 +79,13 @@
       "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
     }
   },
+  "imports": {
+    "MicrosoftGraph": {
+      "provider": "MicrosoftGraph",
+      "version": "0.1.8-preview"
+    }
+  },
   "resources": {
-    "pipelineApp": {
-      "condition": "[not(empty(parameters('pipelineAppUniqueName')))]",
-      "existing": true,
-      "type": "Microsoft.Graph/applications",
-      "apiVersion": "2022-04-01",
-      "name": "[parameters('pipelineAppUniqueName')]"
-    },
     "acr": {
       "condition": "[not(empty(parameters('acrId')))]",
       "existing": true,
@@ -110,10 +109,10 @@
     },
     "pipelineFic": {
       "condition": "[not(empty(parameters('pipelineAppUniqueName')))]",
-      "type": "Microsoft.Graph/applications/federatedIdentityCredentials",
-      "apiVersion": "2022-04-01",
-      "name": "[format('{0}/{1}', parameters('pipelineAppUniqueName'), format('rac-pipeline-{0}-gha', parameters('racEnv')))]",
+      "import": "MicrosoftGraph",
+      "type": "Microsoft.Graph/applications/federatedIdentityCredentials@v1.0",
       "properties": {
+        "name": "[format('{0}/rac-pipeline-{1}-gha', parameters('pipelineAppUniqueName'), parameters('racEnv'))]",
         "audiences": [
           "api://AzureADTokenExchange"
         ],
@@ -177,7 +176,7 @@
       "metadata": {
         "description": "FIC resource ID (empty when pipelineAppUniqueName is empty)"
       },
-      "value": "[if(not(empty(parameters('pipelineAppUniqueName'))), resourceId('Microsoft.Graph/applications/federatedIdentityCredentials', parameters('pipelineAppUniqueName'), format('rac-pipeline-{0}-gha', parameters('racEnv'))), '')]"
+      "value": "[coalesce(tryGet(reference('pipelineFic'), 'id'), '')]"
     },
     "roleAssignmentIds": {
       "type": "array",
