@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "4610590817829680037"
+      "templateHash": "10240260998674411996"
     },
     "__bicep_exported_variables!": [
       {
@@ -18,6 +18,7 @@
       "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
       "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
       "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+      "keyVaultSecretsOfficer": "b86a8fe4-44ce-4948-aede-518c11a6e2f4",
       "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
       "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
       "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
