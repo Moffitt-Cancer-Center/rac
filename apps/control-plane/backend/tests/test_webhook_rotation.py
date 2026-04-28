@@ -164,7 +164,7 @@ async def test_rotate_endpoint_no_auth_returns_404(
     client: AsyncClient, mock_oidc: Any
 ) -> None:
     """POST /internal/jobs/rotate-webhook-secrets without X-Internal-Auth → 404."""
-    resp = await client.post("/internal/jobs/rotate-webhook-secrets")
+    resp = await client.post("/api/internal/jobs/rotate-webhook-secrets")
     assert resp.status_code == 404
 
 
@@ -193,7 +193,7 @@ async def test_rotate_endpoint_with_correct_auth(
             new=AM(return_value=[]),
         ):
             resp = await client.post(
-                "/internal/jobs/rotate-webhook-secrets",
+                "/api/internal/jobs/rotate-webhook-secrets",
                 headers={"X-Internal-Auth": secret_value},
             )
 

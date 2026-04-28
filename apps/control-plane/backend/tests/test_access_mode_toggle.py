@@ -441,7 +441,7 @@ async def test_api_owner_sets_public_on_deployed_200(
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     resp = await client.post(
-        f"/apps/{app_id}/access-mode",
+        f"/api/apps/{app_id}/access-mode",
         json={"mode": "public", "notes": "Opening for review period"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -463,7 +463,7 @@ async def test_api_owner_sets_public_on_approved_422(
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     resp = await client.post(
-        f"/apps/{app_id}/access-mode",
+        f"/api/apps/{app_id}/access-mode",
         json={"mode": "public", "notes": "Should fail not deployed"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -482,7 +482,7 @@ async def test_api_non_owner_non_admin_403(
     token = mock_oidc.issue_user_token(oid=stranger_oid, roles=[])
 
     resp = await client.post(
-        f"/apps/{app_id}/access-mode",
+        f"/api/apps/{app_id}/access-mode",
         json={"mode": "public", "notes": "Unauthorized attempt"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -500,7 +500,7 @@ async def test_api_invalid_mode_422(
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     resp = await client.post(
-        f"/apps/{app_id}/access-mode",
+        f"/api/apps/{app_id}/access-mode",
         json={"mode": "secret_mode", "notes": "Invalid mode notes"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -518,13 +518,13 @@ async def test_api_flip_back_to_token_required_200(
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     await client.post(
-        f"/apps/{app_id}/access-mode",
+        f"/api/apps/{app_id}/access-mode",
         json={"mode": "public", "notes": "First flip to public"},
         headers={"Authorization": f"Bearer {token}"},
     )
 
     resp = await client.post(
-        f"/apps/{app_id}/access-mode",
+        f"/api/apps/{app_id}/access-mode",
         json={"mode": "token_required", "notes": "Flip back to token required"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -543,7 +543,7 @@ async def test_api_notes_too_short_422(
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     resp = await client.post(
-        f"/apps/{app_id}/access-mode",
+        f"/api/apps/{app_id}/access-mode",
         json={"mode": "public", "notes": "short"},
         headers={"Authorization": f"Bearer {token}"},
     )

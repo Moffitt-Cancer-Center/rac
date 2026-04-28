@@ -78,7 +78,7 @@ export const submissionCreateSchema = z.object({
   paperTitle: z.string().optional(),
   piPrincipalId: z.string().uuid('Must be a valid UUID'),
   deptFallback: z.string().min(1, 'Required'),
-  manifest: z.record(z.unknown()).optional(),
+  manifest: z.record(z.unknown()).nullish(),
 });
 
 export type SubmissionCreateRequest = z.infer<typeof submissionCreateSchema>;
@@ -107,7 +107,7 @@ export const submissionResponseSchema = z.object({
   dockerfilePath: z.string(),
   piPrincipalId: z.string().uuid(),
   deptFallback: z.string(),
-  manifest: z.record(z.unknown()).optional(),
+  manifest: z.record(z.unknown()).nullish(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

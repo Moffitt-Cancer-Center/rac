@@ -171,27 +171,51 @@ def create_app() -> FastAPI:
             """Test-only endpoint that raises an unhandled error."""
             raise RuntimeError("test error")
 
-    # Register routers
-    app.include_router(submissions_router, prefix="")
-    app.include_router(approvals_router, prefix="")
-    app.include_router(assets_router, prefix="")
-    app.include_router(findings_router, prefix="")
-    app.include_router(agents_router, prefix="")
-    app.include_router(webhooks_router, prefix="")
-    app.include_router(webhook_subs_router, prefix="")
-    app.include_router(jobs_router, prefix="")
-    app.include_router(provisioning_router, prefix="")
-    app.include_router(ownership_router, prefix="")
-    app.include_router(cost_router, prefix="")
-    app.include_router(tokens_router, prefix="")
-    app.include_router(access_mode_router, prefix="")
-    app.include_router(access_log_router, prefix="")
+    # Register routers under /api so SPA paths (/, /submissions, /admin/*, ...)
+    # don't collide with API resources of the same name. The frontend's
+    # apiBaseUrl defaults to '/api'.
+    app.include_router(submissions_router, prefix="/api")
+    app.include_router(approvals_router, prefix="/api")
+    app.include_router(assets_router, prefix="/api")
+    app.include_router(findings_router, prefix="/api")
+    app.include_router(agents_router, prefix="/api")
+    app.include_router(webhooks_router, prefix="/api")
+    app.include_router(webhook_subs_router, prefix="/api")
+    app.include_router(jobs_router, prefix="/api")
+    app.include_router(provisioning_router, prefix="/api")
+    app.include_router(ownership_router, prefix="/api")
+    app.include_router(cost_router, prefix="/api")
+    app.include_router(tokens_router, prefix="/api")
+    app.include_router(access_mode_router, prefix="/api")
+    app.include_router(access_log_router, prefix="/api")
 
-    # Static file mount for React SPA (must be last)
+    # Static files + SPA fallback. Vite builds hashed assets under /assets/...,
+    # which the StaticFiles mount serves directly. Any other GET that isn't an
+    # API path or a real static file falls through to index.html so the
+    # client-side router can handle it (deep links, post-OAuth redirects).
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists():
+        from fastapi.responses import FileResponse
+
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
-        app.mount("/", StaticFiles(directory=static_dir, html=True), name="root")
+        app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
+
+        index_path = static_dir / "index.html"
+
+        @app.get("/", include_in_schema=False)
+        async def spa_root() -> FileResponse:
+            return FileResponse(index_path)
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def spa_fallback(full_path: str) -> FileResponse:
+            # Don't swallow unknown API paths — let them 404 so client errors
+            # surface as JSON, not as the SPA shell.
+            if full_path.startswith("api/"):
+                raise HTTPException(status_code=404, detail="not found")
+            candidate = static_dir / full_path
+            if candidate.is_file():
+                return FileResponse(candidate)
+            return FileResponse(index_path)
 
     return app
 

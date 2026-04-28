@@ -22,7 +22,9 @@ interface SubmissionsListProps {
 }
 
 export function SubmissionsList({ pageSize = 10 }: SubmissionsListProps) {
-  const [page, setPage] = useState(0);
+  // Backend paginates 1-indexed (page=0 → 422). Keep state aligned with
+  // backend so the wire request and UI math agree.
+  const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('');
 
   const { data, isLoading, error } = useQuery({
@@ -51,7 +53,7 @@ export function SubmissionsList({ pageSize = 10 }: SubmissionsListProps) {
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value);
-              setPage(0);
+              setPage(1);
             }}
             className="mt-1 rounded-md border border-gray-300 px-3 py-2"
           >
@@ -121,20 +123,20 @@ export function SubmissionsList({ pageSize = 10 }: SubmissionsListProps) {
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">
           <button
-            onClick={() => setPage(Math.max(0, page - 1))}
-            disabled={page === 0}
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page === 1}
             className="rounded-md border border-gray-300 px-3 py-1 disabled:text-gray-400"
           >
             Previous
           </button>
 
           <span className="text-sm">
-            Page {page + 1} of {totalPages}
+            Page {page} of {totalPages}
           </span>
 
           <button
-            onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
-            disabled={page >= totalPages - 1}
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
             className="rounded-md border border-gray-300 px-3 py-1 disabled:text-gray-400"
           >
             Next

@@ -117,7 +117,7 @@ async def test_valid_hmac_passed(client: AsyncClient, db_setup: Any, db_session:
         patch("rac_control_plane.api.routes.webhooks.scan_verdict_counter") as mock_counter,
     ):
         resp = await client.post(
-            f"/webhooks/pipeline-callback/{sub_id}",
+            f"/api/webhooks/pipeline-callback/{sub_id}",
             content=body,
             headers={
                 "Content-Type": "application/json",
@@ -188,7 +188,7 @@ async def test_valid_hmac_rejected(client: AsyncClient, db_setup: Any) -> None:
         patch("rac_control_plane.metrics.scan_verdict_counter"),
     ):
         resp = await client.post(
-            f"/webhooks/pipeline-callback/{sub_id}",
+            f"/api/webhooks/pipeline-callback/{sub_id}",
             content=body,
             headers={
                 "Content-Type": "application/json",
@@ -244,7 +244,7 @@ async def test_valid_hmac_build_failed(client: AsyncClient, db_setup: Any) -> No
         patch("rac_control_plane.metrics.scan_verdict_counter"),
     ):
         resp = await client.post(
-            f"/webhooks/pipeline-callback/{sub_id}",
+            f"/api/webhooks/pipeline-callback/{sub_id}",
             content=body,
             headers={
                 "Content-Type": "application/json",
@@ -298,7 +298,7 @@ async def test_valid_hmac_partial_passed(client: AsyncClient, db_setup: Any) -> 
         patch("rac_control_plane.metrics.scan_verdict_counter"),
     ):
         resp = await client.post(
-            f"/webhooks/pipeline-callback/{sub_id}",
+            f"/api/webhooks/pipeline-callback/{sub_id}",
             content=body,
             headers={
                 "Content-Type": "application/json",
@@ -347,7 +347,7 @@ async def test_invalid_hmac_rejected(client: AsyncClient, db_setup: Any) -> None
         ),
     ):
         resp = await client.post(
-            f"/webhooks/pipeline-callback/{sub_id}",
+            f"/api/webhooks/pipeline-callback/{sub_id}",
             content=body,
             headers={
                 "Content-Type": "application/json",
@@ -394,7 +394,7 @@ async def test_stale_timestamp_rejected(client: AsyncClient, db_setup: Any) -> N
         ),
     ):
         resp = await client.post(
-            f"/webhooks/pipeline-callback/{sub_id}",
+            f"/api/webhooks/pipeline-callback/{sub_id}",
             content=body,
             headers={
                 "Content-Type": "application/json",
@@ -430,7 +430,7 @@ async def test_replay_stale_body_rejected(client: AsyncClient, db_setup: Any) ->
         ),
     ):
         resp = await client.post(
-            f"/webhooks/pipeline-callback/{sub_id}",
+            f"/api/webhooks/pipeline-callback/{sub_id}",
             content=body,
             headers={
                 "Content-Type": "application/json",

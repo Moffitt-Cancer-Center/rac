@@ -97,7 +97,7 @@ async def test_failed_provisions_list(client, db_setup, mock_oidc) -> None:  # t
 
     token = _admin_token(mock_oidc)
     resp = await client.get(
-        "/admin/submissions/failed-provisions",
+        "/api/admin/submissions/failed-provisions",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.text
@@ -118,7 +118,7 @@ async def test_failed_provisions_shape(client, db_setup, mock_oidc) -> None:  # 
 
     token = _admin_token(mock_oidc)
     resp = await client.get(
-        "/admin/submissions/failed-provisions",
+        "/api/admin/submissions/failed-provisions",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.text
@@ -153,7 +153,7 @@ async def test_retry_calls_orchestrator(client, db_setup, mock_oidc) -> None:  #
         new=AsyncMock(return_value=success_outcome),
     ) as mock_provision:
         resp = await client.post(
-            f"/admin/submissions/{sub.id}/provisioning/retry",
+            f"/api/admin/submissions/{sub.id}/provisioning/retry",
             headers={"Authorization": f"Bearer {token}"},
         )
 
@@ -171,7 +171,7 @@ async def test_retry_non_admin_403(client, db_setup, mock_oidc) -> None:  # type
 
     token = _user_token(mock_oidc)
     resp = await client.post(
-        f"/admin/submissions/{sub.id}/provisioning/retry",
+        f"/api/admin/submissions/{sub.id}/provisioning/retry",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
@@ -184,7 +184,7 @@ async def test_retry_wrong_state(client, db_setup, mock_oidc) -> None:  # type: 
 
     token = _admin_token(mock_oidc)
     resp = await client.post(
-        f"/admin/submissions/{sub.id}/provisioning/retry",
+        f"/api/admin/submissions/{sub.id}/provisioning/retry",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 409
@@ -195,7 +195,7 @@ async def test_retry_not_found(client, mock_oidc) -> None:  # type: ignore[no-un
     """Unknown submission ID → 404."""
     token = _admin_token(mock_oidc)
     resp = await client.post(
-        f"/admin/submissions/{uuid4()}/provisioning/retry",
+        f"/api/admin/submissions/{uuid4()}/provisioning/retry",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 404

@@ -50,7 +50,7 @@ async def _create_sub(client: AsyncClient, mock_oidc: Any) -> dict[str, Any]:
         new=AsyncMock(),
     ):
         resp = await client.post(
-            "/admin/webhook-subscriptions",
+            "/api/admin/webhook-subscriptions",
             json=_CREATE_BODY,
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -82,7 +82,7 @@ async def test_admin_create_returns_secret_once(
     token = _admin_token(mock_oidc)
     sub_id = data["id"]
     detail_resp = await client.get(
-        f"/admin/webhook-subscriptions/{sub_id}",
+        f"/api/admin/webhook-subscriptions/{sub_id}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert detail_resp.status_code == 200
@@ -100,7 +100,7 @@ async def test_non_admin_forbidden(client: AsyncClient, mock_oidc: Any) -> None:
     """POST /admin/webhook-subscriptions without admin role → 403."""
     token = _user_token(mock_oidc)
     resp = await client.post(
-        "/admin/webhook-subscriptions",
+        "/api/admin/webhook-subscriptions",
         json=_CREATE_BODY,
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -121,7 +121,7 @@ async def test_patch_toggle_enabled(
 
     token = _admin_token(mock_oidc)
     resp = await client.patch(
-        f"/admin/webhook-subscriptions/{sub_id}",
+        f"/api/admin/webhook-subscriptions/{sub_id}",
         json={"enabled": False},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -154,7 +154,7 @@ async def test_delete_removes_row(
 
     token = _admin_token(mock_oidc)
     resp = await client.delete(
-        f"/admin/webhook-subscriptions/{sub_id}",
+        f"/api/admin/webhook-subscriptions/{sub_id}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 204

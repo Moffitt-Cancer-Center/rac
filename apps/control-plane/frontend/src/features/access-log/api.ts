@@ -3,7 +3,7 @@ import { acquireApiToken } from '@/lib/msal';
 import { accessLogListResponseSchema } from './types';
 import type { AccessLogListResponse } from './types';
 
-const apiBase = import.meta.env.VITE_API_BASE_URL || window.location.origin + '/api';
+const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
 
 function toCamel(s: string): string {
   return s.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());

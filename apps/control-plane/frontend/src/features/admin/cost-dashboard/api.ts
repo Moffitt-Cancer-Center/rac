@@ -8,7 +8,7 @@
 
 import { acquireApiToken } from '@/lib/msal';
 
-const apiBase = import.meta.env.VITE_API_BASE_URL || window.location.origin + '/api';
+const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 

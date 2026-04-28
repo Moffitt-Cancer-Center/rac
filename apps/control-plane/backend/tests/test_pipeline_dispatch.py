@@ -352,7 +352,7 @@ async def test_create_submission_dispatches(client, db_session, mock_oidc) -> No
             "rac_control_plane.api.routes.submissions._build_dispatch_fn",
             return_value=_fake_dispatch,
         ):
-            response = await client.post("/submissions", json=body, headers=headers)
+            response = await client.post("/api/submissions", json=body, headers=headers)
         mock.stop()
 
     assert response.status_code == 201, response.text
@@ -408,7 +408,7 @@ async def test_create_submission_on_dispatch_422_fails_submission(
             "rac_control_plane.api.routes.submissions._build_dispatch_fn",
             return_value=_raising_dispatch,
         ):
-            response = await client.post("/submissions", json=body, headers=headers)
+            response = await client.post("/api/submissions", json=body, headers=headers)
         mock.stop()
 
     assert response.status_code == 422, response.text

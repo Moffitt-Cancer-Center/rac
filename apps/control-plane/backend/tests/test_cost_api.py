@@ -116,7 +116,7 @@ async def test_cost_summary_returns_grouped_data(
     await _insert_snapshot(db_setup, app_slug=slug_c, year_month=year_month, cost_usd=200.0)
 
     response = await client.get(
-        f"/admin/cost/summary?year_month={year_month}",
+        f"/api/admin/cost/summary?year_month={year_month}",
         headers={"Authorization": f"Bearer {_admin_token(mock_oidc, admin_oid)}"},
     )
 
@@ -144,7 +144,7 @@ async def test_cost_summary_non_admin_403(
 ) -> None:
     user_oid = uuid4()
     response = await client.get(
-        "/admin/cost/summary?year_month=2026-04",
+        "/api/admin/cost/summary?year_month=2026-04",
         headers={"Authorization": f"Bearer {_user_token(mock_oidc, user_oid)}"},
     )
     assert response.status_code == 403
@@ -172,7 +172,7 @@ async def test_cost_summary_untagged_in_grand_total(
     )
 
     response = await client.get(
-        f"/admin/cost/summary?year_month={year_month}",
+        f"/api/admin/cost/summary?year_month={year_month}",
         headers={"Authorization": f"Bearer {_admin_token(mock_oidc, admin_oid)}"},
     )
 
@@ -212,7 +212,7 @@ async def test_cost_idle_returns_idle_apps(
     await _insert_snapshot(db_setup, app_slug="idle-app", year_month=year_month, cost_usd=60.0)
 
     response = await client.get(
-        "/admin/cost/idle",
+        "/api/admin/cost/idle",
         headers={"Authorization": f"Bearer {_admin_token(mock_oidc, admin_oid)}"},
     )
 
@@ -244,7 +244,7 @@ async def test_cost_idle_excludes_active_apps(
     await _insert_snapshot(db_setup, app_slug="active-app", year_month=year_month, cost_usd=60.0)
 
     response = await client.get(
-        "/admin/cost/idle",
+        "/api/admin/cost/idle",
         headers={"Authorization": f"Bearer {_admin_token(mock_oidc, admin_oid)}"},
     )
 
@@ -261,7 +261,7 @@ async def test_cost_idle_non_admin_403(
 ) -> None:
     user_oid = uuid4()
     response = await client.get(
-        "/admin/cost/idle",
+        "/api/admin/cost/idle",
         headers={"Authorization": f"Bearer {_user_token(mock_oidc, user_oid)}"},
     )
     assert response.status_code == 403

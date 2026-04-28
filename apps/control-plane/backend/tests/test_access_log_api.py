@@ -170,7 +170,7 @@ async def test_list_access_log_basic(
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
     # Use limit=5 to trigger next_cursor (limit must equal number of returned rows)
     resp = await client.get(
-        f"/apps/{app_id}/access-log?limit=5",
+        f"/api/apps/{app_id}/access-log?limit=5",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.json()
@@ -202,7 +202,7 @@ async def test_pagination_before_cursor(
 
     # Page 1
     resp1 = await client.get(
-        f"/apps/{app_id}/access-log?limit=5",
+        f"/api/apps/{app_id}/access-log?limit=5",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp1.status_code == 200, resp1.json()
@@ -215,7 +215,7 @@ async def test_pagination_before_cursor(
 
     # Page 2
     resp2 = await client.get(
-        f"/apps/{app_id}/access-log?limit=5&before={cursor}",
+        f"/api/apps/{app_id}/access-log?limit=5&before={cursor}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp2.status_code == 200, resp2.json()
@@ -253,7 +253,7 @@ async def test_reviewer_label_joined(
 
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
     resp = await client.get(
-        f"/apps/{app_id}/access-log",
+        f"/api/apps/{app_id}/access-log",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.json()
@@ -280,7 +280,7 @@ async def test_reviewer_label_null_for_public(
 
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
     resp = await client.get(
-        f"/apps/{app_id}/access-log",
+        f"/api/apps/{app_id}/access-log",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.json()
@@ -308,7 +308,7 @@ async def test_filter_by_mode(
 
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
     resp = await client.get(
-        f"/apps/{app_id}/access-log?mode=public",
+        f"/api/apps/{app_id}/access-log?mode=public",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.json()
@@ -348,7 +348,7 @@ async def test_filter_by_jti(
 
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
     resp = await client.get(
-        f"/apps/{app_id}/access-log?jti={target_jti}",
+        f"/api/apps/{app_id}/access-log?jti={target_jti}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.json()
@@ -376,7 +376,7 @@ async def test_filter_by_status(
 
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
     resp = await client.get(
-        f"/apps/{app_id}/access-log?status=500",
+        f"/api/apps/{app_id}/access-log?status=500",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.json()
@@ -399,7 +399,7 @@ async def test_limit_cap(
 
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
     resp = await client.get(
-        f"/apps/{app_id}/access-log?limit=500",
+        f"/api/apps/{app_id}/access-log?limit=500",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.json()
@@ -417,7 +417,7 @@ async def test_auth_non_owner_returns_403(
 
     stranger_token = mock_oidc.issue_user_token(oid=stranger_oid, roles=[])
     resp = await client.get(
-        f"/apps/{app_id}/access-log",
+        f"/api/apps/{app_id}/access-log",
         headers={"Authorization": f"Bearer {stranger_token}"},
     )
     assert resp.status_code == 403
@@ -435,7 +435,7 @@ async def test_auth_admin_allowed(
 
     admin_token = mock_oidc.issue_user_token(oid=admin_oid, roles=["it_approver"])
     resp = await client.get(
-        f"/apps/{app_id}/access-log",
+        f"/api/apps/{app_id}/access-log",
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert resp.status_code == 200, resp.json()

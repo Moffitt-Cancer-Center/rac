@@ -132,7 +132,7 @@ async def test_transfer_happy_path(
         new=AsyncMock(return_value=Ok()),
     ):
         response = await client.post(
-            f"/admin/apps/{app.id}/ownership/transfer",
+            f"/api/admin/apps/{app.id}/ownership/transfer",
             json={
                 "new_pi_principal_id": str(new_pi),
                 "new_dept_fallback": "New Dept",
@@ -176,7 +176,7 @@ async def test_transfer_preserves_audit(
         new=AsyncMock(return_value=Ok()),
     ):
         r = await client.post(
-            f"/admin/apps/{app.id}/ownership/transfer",
+            f"/api/admin/apps/{app.id}/ownership/transfer",
             json={
                 "new_pi_principal_id": str(new_pi),
                 "new_dept_fallback": "Dept B",
@@ -231,7 +231,7 @@ async def test_transfer_resolves_open_flag(
         new=AsyncMock(return_value=Ok()),
     ):
         r = await client.post(
-            f"/admin/apps/{app.id}/ownership/transfer",
+            f"/api/admin/apps/{app.id}/ownership/transfer",
             json={
                 "new_pi_principal_id": str(new_pi),
                 "new_dept_fallback": "New Dept",
@@ -268,7 +268,7 @@ async def test_transfer_invalid_new_pi_returns_422(
         new=AsyncMock(return_value=Invalid(reason="account_disabled")),
     ):
         r = await client.post(
-            f"/admin/apps/{app.id}/ownership/transfer",
+            f"/api/admin/apps/{app.id}/ownership/transfer",
             json={
                 "new_pi_principal_id": str(uuid4()),
                 "new_dept_fallback": "Some Dept",
@@ -291,7 +291,7 @@ async def test_transfer_non_admin_returns_403(
     app, _sub = await _insert_app_with_submission(db_setup, pi_oid=uuid4())
 
     r = await client.post(
-        f"/admin/apps/{app.id}/ownership/transfer",
+        f"/api/admin/apps/{app.id}/ownership/transfer",
         json={
             "new_pi_principal_id": str(uuid4()),
             "new_dept_fallback": "Some Dept",
@@ -315,7 +315,7 @@ async def test_transfer_app_not_found_returns_404(
         new=AsyncMock(return_value=Ok()),
     ):
         r = await client.post(
-            f"/admin/apps/{uuid4()}/ownership/transfer",
+            f"/api/admin/apps/{uuid4()}/ownership/transfer",
             json={
                 "new_pi_principal_id": str(uuid4()),
                 "new_dept_fallback": "Some Dept",

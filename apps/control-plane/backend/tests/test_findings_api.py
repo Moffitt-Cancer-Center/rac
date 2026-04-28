@@ -96,7 +96,7 @@ async def test_submitter_records_accept_warn_finding(
 
     # POST decision
     resp = await client.post(
-        f"/submissions/{sub.id}/findings/{finding.id}/decisions",
+        f"/api/submissions/{sub.id}/findings/{finding.id}/decisions",
         json={"decision": "accept", "notes": "Looks intentional"},
         headers=headers,
     )
@@ -109,7 +109,7 @@ async def test_submitter_records_accept_warn_finding(
 
     # GET /submissions/{id}/findings shows the decision (nested shape)
     resp2 = await client.get(
-        f"/submissions/{sub.id}/findings",
+        f"/api/submissions/{sub.id}/findings",
         headers=headers,
     )
     assert resp2.status_code == 200
@@ -141,7 +141,7 @@ async def test_ac43_all_fields_persisted(
     await db_setup.commit()
 
     resp = await client.post(
-        f"/submissions/{sub.id}/findings/{finding.id}/decisions",
+        f"/api/submissions/{sub.id}/findings/{finding.id}/decisions",
         json={"decision": "override"},
         headers=headers,
     )
@@ -155,7 +155,7 @@ async def test_ac43_all_fields_persisted(
     assert UUID(data["decision_id"])  # decision persisted with its own ID
 
     # Verify rule_id and rule_version via GET findings (nested decision shape)
-    resp2 = await client.get(f"/submissions/{sub.id}/findings", headers=headers)
+    resp2 = await client.get(f"/api/submissions/{sub.id}/findings", headers=headers)
     assert resp2.status_code == 200
     f = resp2.json()[0]
     assert f["rule_id"] == "dockerfile/inline_downloads"
@@ -189,7 +189,7 @@ async def test_non_submitter_non_admin_forbidden(
     await db_setup.commit()
 
     resp = await client.post(
-        f"/submissions/{sub.id}/findings/{finding.id}/decisions",
+        f"/api/submissions/{sub.id}/findings/{finding.id}/decisions",
         json={"decision": "accept"},
         headers=headers,
     )
@@ -210,7 +210,7 @@ async def test_non_submitter_cannot_list_findings(
     db_setup.add(sub)
     await db_setup.commit()
 
-    resp = await client.get(f"/submissions/{sub.id}/findings", headers=headers)
+    resp = await client.get(f"/api/submissions/{sub.id}/findings", headers=headers)
     assert resp.status_code == 403
 
 
@@ -244,14 +244,14 @@ async def test_deciding_last_error_finding_transitions_to_awaiting_scan(
 
     # Decide: accept
     resp = await client.post(
-        f"/submissions/{sub.id}/findings/{finding.id}/decisions",
+        f"/api/submissions/{sub.id}/findings/{finding.id}/decisions",
         json={"decision": "accept"},
         headers=headers,
     )
     assert resp.status_code == 201
 
     # Verify submission is back to awaiting_scan via the submissions GET endpoint
-    resp2 = await client.get(f"/submissions/{sub.id}", headers=headers)
+    resp2 = await client.get(f"/api/submissions/{sub.id}", headers=headers)
     assert resp2.status_code == 200
     assert resp2.json()["status"] == "awaiting_scan"
 
@@ -276,7 +276,7 @@ async def test_invalid_decision_value_returns_422(
     await db_setup.commit()
 
     resp = await client.post(
-        f"/submissions/{sub.id}/findings/{finding.id}/decisions",
+        f"/api/submissions/{sub.id}/findings/{finding.id}/decisions",
         json={"decision": "INVALID_DECISION"},
         headers=headers,
     )
@@ -307,14 +307,14 @@ async def test_dismiss_does_not_resolve_error_finding(
     await db_setup.commit()
 
     resp = await client.post(
-        f"/submissions/{sub.id}/findings/{finding.id}/decisions",
+        f"/api/submissions/{sub.id}/findings/{finding.id}/decisions",
         json={"decision": "dismiss"},
         headers=headers,
     )
     assert resp.status_code == 201
 
     # Submission should still be needs_user_action (dismiss doesn't resolve error)
-    resp2 = await client.get(f"/submissions/{sub.id}", headers=headers)
+    resp2 = await client.get(f"/api/submissions/{sub.id}", headers=headers)
     assert resp2.status_code == 200
     assert resp2.json()["status"] == "needs_user_action"
 
@@ -411,7 +411,7 @@ async def test_redispatch_called_after_detection_resolved(
         return_value=_fake_dispatch,
     ):
         resp = await client.post(
-            f"/submissions/{sub.id}/findings/{finding.id}/decisions",
+            f"/api/submissions/{sub.id}/findings/{finding.id}/decisions",
             json={"decision": "accept"},
             headers=headers,
         )
@@ -419,7 +419,7 @@ async def test_redispatch_called_after_detection_resolved(
     assert resp.status_code == 201
 
     # Submission returned to awaiting_scan
-    resp2 = await client.get(f"/submissions/{sub.id}", headers=headers)
+    resp2 = await client.get(f"/api/submissions/{sub.id}", headers=headers)
     assert resp2.json()["status"] == "awaiting_scan"
 
     # Dispatch was called once (as a background task that runs inline in ASGI test)

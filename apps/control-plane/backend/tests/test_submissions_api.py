@@ -83,7 +83,7 @@ async def test_submission_interactive_user_creates(client, db_session, mock_oidc
 
     with _mock_github_success() as mock:
         mock.start()
-        response = await client.post("/submissions", json=body, headers=headers)
+        response = await client.post("/api/submissions", json=body, headers=headers)
         mock.stop()
 
     assert response.status_code == 201, response.text
@@ -122,7 +122,7 @@ async def test_submission_interactive_user_creates(client, db_session, mock_oidc
 async def test_submission_no_auth_returns_401(client, mock_oidc):
     """AC2.3: POST /submissions without Authorization header returns 401."""
     body = _valid_body()
-    response = await client.post("/submissions", json=body)
+    response = await client.post("/api/submissions", json=body)
 
     assert response.status_code == 401, response.text
 
@@ -153,7 +153,7 @@ async def test_submission_github_not_found_returns_422(client, db_session, mock_
         mock.get(_GITHUB_REPO_URL).mock(
             return_value=Response(404, json={"message": "Not Found"})
         )
-        response = await client.post("/submissions", json=body, headers=headers)
+        response = await client.post("/api/submissions", json=body, headers=headers)
 
     assert response.status_code == 422, response.text
     data = response.json()
@@ -183,7 +183,7 @@ async def test_submission_principal_persisted_across_tables(client, db_session, 
 
     with _mock_github_success() as mock:
         mock.start()
-        response = await client.post("/submissions", json=body, headers=headers)
+        response = await client.post("/api/submissions", json=body, headers=headers)
         mock.stop()
 
     assert response.status_code == 201, response.text
@@ -240,7 +240,7 @@ async def test_submission_agent_flow_populates_agent_id(client, db_session, db_s
 
     with _mock_github_success() as mock:
         mock.start()
-        response = await client.post("/submissions", json=body, headers=headers)
+        response = await client.post("/api/submissions", json=body, headers=headers)
         mock.stop()
 
     assert response.status_code == 201, response.text
@@ -278,8 +278,8 @@ async def test_submission_idempotency_same_key_same_body(client, db_session, moc
 
     with _mock_github_success() as mock:
         mock.start()
-        response1 = await client.post("/submissions", json=body, headers=headers)
-        response2 = await client.post("/submissions", json=body, headers=headers)
+        response1 = await client.post("/api/submissions", json=body, headers=headers)
+        response2 = await client.post("/api/submissions", json=body, headers=headers)
         mock.stop()
 
     assert response1.status_code == 201, f"First request failed: {response1.text}"
@@ -335,7 +335,7 @@ async def test_submission_disabled_agent_returns_403(client, db_session, db_setu
     body = _valid_body()
 
     with respx.mock(assert_all_called=False):
-        response = await client.post("/submissions", json=body, headers=headers)
+        response = await client.post("/api/submissions", json=body, headers=headers)
 
     assert response.status_code == 403, response.text
     data = response.json()
@@ -430,7 +430,7 @@ async def test_agent_submission_with_warn_finding_transitions_to_needs_user_acti
         _mock_github_success() as github_mock,
     ):
         github_mock.start()
-        response = await client.post("/submissions", json=body, headers=headers)
+        response = await client.post("/api/submissions", json=body, headers=headers)
         github_mock.stop()
 
     assert response.status_code == 201, response.text
@@ -480,7 +480,7 @@ async def test_submission_invalid_pi_returns_422(client, db_session, mock_oidc):
         side_effect=_return_none,
     ), _mock_github_success() as mock:
         mock.start()
-        response = await client.post("/submissions", json=body, headers=headers)
+        response = await client.post("/api/submissions", json=body, headers=headers)
         mock.stop()
 
     assert response.status_code == 422, response.text
@@ -529,7 +529,7 @@ async def test_submission_disabled_pi_returns_422(client, db_session, mock_oidc)
         side_effect=_return_disabled,
     ), _mock_github_success() as mock:
         mock.start()
-        response = await client.post("/submissions", json=body, headers=headers)
+        response = await client.post("/api/submissions", json=body, headers=headers)
         mock.stop()
 
     assert response.status_code == 422, response.text

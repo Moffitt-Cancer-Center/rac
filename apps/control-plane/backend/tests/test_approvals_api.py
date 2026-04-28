@@ -101,7 +101,7 @@ async def test_research_approve_happy_path(client, db_session, db_setup, mock_oi
         mock_histogram.record.side_effect = _capture_record
 
         response = await client.post(
-            f"/submissions/{sub_id}/approvals/research",
+            f"/api/submissions/{sub_id}/approvals/research",
             json={"decision": "approve"},
             headers=headers,
         )
@@ -145,7 +145,7 @@ async def test_research_approve_without_role(client, db_setup, mock_oidc) -> Non
     )
 
     response = await client.post(
-        f"/submissions/{sub.id}/approvals/research",
+        f"/api/submissions/{sub.id}/approvals/research",
         json={"decision": "approve"},
         headers=headers,
     )
@@ -171,7 +171,7 @@ async def test_research_approve_wrong_state(client, db_setup, mock_oidc) -> None
     )
 
     response = await client.post(
-        f"/submissions/{sub.id}/approvals/research",
+        f"/api/submissions/{sub.id}/approvals/research",
         json={"decision": "approve"},
         headers=headers,
     )
@@ -198,7 +198,7 @@ async def test_it_reject(client, db_session, db_setup, mock_oidc) -> None:
     sub_id = sub.id
 
     response = await client.post(
-        f"/submissions/{sub_id}/approvals/it",
+        f"/api/submissions/{sub_id}/approvals/it",
         json={"decision": "reject", "notes": "Violates policy"},
         headers=headers,
     )
@@ -235,7 +235,7 @@ async def test_request_changes(client, db_session, db_setup, mock_oidc) -> None:
     sub_id = sub.id
 
     response = await client.post(
-        f"/submissions/{sub_id}/approvals/research",
+        f"/api/submissions/{sub_id}/approvals/research",
         json={"decision": "request_changes", "notes": "Please add license."},
         headers=headers,
     )
@@ -280,7 +280,7 @@ async def test_it_approve_enqueues_provisioning(client, db_setup, mock_oidc) -> 
         side_effect=_mock_run_provisioning,
     ):
         response = await client.post(
-            f"/submissions/{sub_id}/approvals/it",
+            f"/api/submissions/{sub_id}/approvals/it",
             json={"decision": "approve"},
             headers=headers,
         )
@@ -317,7 +317,7 @@ async def test_full_approval_lifecycle(client, db_session, db_setup, mock_oidc) 
 
     # Step 1: Research approves
     r1 = await client.post(
-        f"/submissions/{sub_id}/approvals/research",
+        f"/api/submissions/{sub_id}/approvals/research",
         json={"decision": "approve"},
         headers={"Authorization": f"Bearer {research_token}"},
     )
@@ -330,7 +330,7 @@ async def test_full_approval_lifecycle(client, db_session, db_setup, mock_oidc) 
         new_callable=AsyncMock,
     ):
         r2 = await client.post(
-            f"/submissions/{sub_id}/approvals/it",
+            f"/api/submissions/{sub_id}/approvals/it",
             json={"decision": "approve"},
             headers={"Authorization": f"Bearer {it_token}"},
         )
@@ -369,7 +369,7 @@ async def test_it_approve_without_it_role(client, db_setup, mock_oidc) -> None:
     )
 
     response = await client.post(
-        f"/submissions/{sub.id}/approvals/it",
+        f"/api/submissions/{sub.id}/approvals/it",
         json={"decision": "approve"},
         headers=headers,
     )

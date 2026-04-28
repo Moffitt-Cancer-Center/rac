@@ -1,7 +1,7 @@
 // pattern: Imperative Shell — API client for access-mode toggle endpoint.
 import { acquireApiToken } from '@/lib/msal';
 
-const apiBase = import.meta.env.VITE_API_BASE_URL || window.location.origin + '/api';
+const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export type AccessModeRequest = {
   mode: 'token_required' | 'public';

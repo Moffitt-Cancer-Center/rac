@@ -72,8 +72,8 @@ async def test_idempotency_same_key_different_body(client, db_session, mock_oidc
 
     with _mock_github_success() as mock:
         mock.start()
-        response1 = await client.post("/submissions", json=body1, headers=headers)
-        response2 = await client.post("/submissions", json=body2, headers=headers)
+        response1 = await client.post("/api/submissions", json=body1, headers=headers)
+        response2 = await client.post("/api/submissions", json=body2, headers=headers)
         mock.stop()
 
     assert response1.status_code == 201, f"First request failed: {response1.text}"
@@ -110,8 +110,8 @@ async def test_idempotency_no_key_creates_new_row_each_time(client, db_session, 
 
     with _mock_github_success() as mock:
         mock.start()
-        response1 = await client.post("/submissions", json=body, headers=headers)
-        response2 = await client.post("/submissions", json=body, headers=headers)
+        response1 = await client.post("/api/submissions", json=body, headers=headers)
+        response2 = await client.post("/api/submissions", json=body, headers=headers)
         mock.stop()
 
     assert response1.status_code == 201, f"First request failed: {response1.text}"

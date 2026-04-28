@@ -157,7 +157,7 @@ async def test_submitter_mints_token_201(client: Any, db_setup: AsyncSession, mo
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     resp = await client.post(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         json={"reviewer_label": "Journal Reviewer #1", "ttl_days": 30},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -177,7 +177,7 @@ async def test_jwt_verifies_against_public_key(client: Any, db_setup: AsyncSessi
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     resp = await client.post(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         json={"reviewer_label": "Verifier", "ttl_days": 7},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -195,7 +195,7 @@ async def test_visit_url_has_correct_form(client: Any, db_setup: AsyncSession, m
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     resp = await client.post(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         json={"reviewer_label": "URL Reviewer", "ttl_days": 30},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -214,7 +214,7 @@ async def test_non_owner_non_admin_mint_returns_403(
     token = mock_oidc.issue_user_token(oid=stranger_oid, roles=[])
 
     resp = await client.post(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         json={"reviewer_label": "Stranger", "ttl_days": 30},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -228,7 +228,7 @@ async def test_ttl_days_181_returns_422(client: Any, db_setup: AsyncSession, moc
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     resp = await client.post(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         json={"reviewer_label": "Test", "ttl_days": 181},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -244,7 +244,7 @@ async def test_empty_reviewer_label_returns_422(
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     resp = await client.post(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         json={"reviewer_label": "", "ttl_days": 30},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -259,7 +259,7 @@ async def test_admin_can_mint(client: Any, db_setup: AsyncSession, mock_oidc: An
     token = mock_oidc.issue_user_token(oid=admin_oid, roles=["it_approver"])
 
     resp = await client.post(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         json={"reviewer_label": "Admin Reviewer", "ttl_days": 30},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -278,13 +278,13 @@ async def test_listing_excludes_jwt(client: Any, db_setup: AsyncSession, mock_oi
 
     # Mint first
     await client.post(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         json={"reviewer_label": "List Test", "ttl_days": 30},
         headers={"Authorization": f"Bearer {token}"},
     )
 
     resp = await client.get(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
@@ -302,14 +302,14 @@ async def test_listing_shows_jti(client: Any, db_setup: AsyncSession, mock_oidc:
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     mint_resp = await client.post(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         json={"reviewer_label": "JTI Check", "ttl_days": 30},
         headers={"Authorization": f"Bearer {token}"},
     )
     minted_jti = mint_resp.json()["jti"]
 
     list_resp = await client.get(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert list_resp.status_code == 200
@@ -331,7 +331,7 @@ async def test_revoke_writes_revoked_token_row(
 
     # Mint
     mint_resp = await client.post(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         json={"reviewer_label": "Revoke Me", "ttl_days": 30},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -340,7 +340,7 @@ async def test_revoke_writes_revoked_token_row(
 
     # Revoke
     del_resp = await client.delete(
-        f"/apps/{app_id}/tokens/{jti}",
+        f"/api/apps/{app_id}/tokens/{jti}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert del_resp.status_code == 204
@@ -360,19 +360,19 @@ async def test_revoke_then_list_shows_revoked_at(
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     mint_resp = await client.post(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         json={"reviewer_label": "Rev Check", "ttl_days": 30},
         headers={"Authorization": f"Bearer {token}"},
     )
     jti = mint_resp.json()["jti"]
 
     await client.delete(
-        f"/apps/{app_id}/tokens/{jti}",
+        f"/api/apps/{app_id}/tokens/{jti}",
         headers={"Authorization": f"Bearer {token}"},
     )
 
     list_resp = await client.get(
-        f"/apps/{app_id}/tokens?include_revoked=true",
+        f"/api/apps/{app_id}/tokens?include_revoked=true",
         headers={"Authorization": f"Bearer {token}"},
     )
     items = list_resp.json()["items"]
@@ -392,7 +392,7 @@ async def test_non_owner_revoke_returns_403(
     # Mint as owner
     owner_token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
     mint_resp = await client.post(
-        f"/apps/{app_id}/tokens",
+        f"/api/apps/{app_id}/tokens",
         json={"reviewer_label": "Forbidden Revoke", "ttl_days": 30},
         headers={"Authorization": f"Bearer {owner_token}"},
     )
@@ -401,7 +401,7 @@ async def test_non_owner_revoke_returns_403(
     # Revoke as stranger
     stranger_token = mock_oidc.issue_user_token(oid=stranger_oid, roles=[])
     del_resp = await client.delete(
-        f"/apps/{app_id}/tokens/{jti}",
+        f"/api/apps/{app_id}/tokens/{jti}",
         headers={"Authorization": f"Bearer {stranger_token}"},
     )
     assert del_resp.status_code == 403
@@ -416,7 +416,7 @@ async def test_revoke_unknown_jti_returns_404(
     token = mock_oidc.issue_user_token(oid=owner_oid, roles=[])
 
     del_resp = await client.delete(
-        f"/apps/{app_id}/tokens/{uuid4()}",
+        f"/api/apps/{app_id}/tokens/{uuid4()}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert del_resp.status_code == 404

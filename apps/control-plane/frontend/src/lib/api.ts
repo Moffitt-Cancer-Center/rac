@@ -50,7 +50,12 @@ async function apiFetch(
 ): Promise<Response> {
   const { skipAuth = false, idempotencyKey, ...fetchOptions } = options;
 
-  const url = new URL(path, apiBaseUrl);
+  // apiBaseUrl is path-only (e.g. "/api"), so URL constructor (which requires
+  // an absolute base) can't be used. Concatenate carefully so callers may pass
+  // either "/foo" or "foo".
+  const normalizedBase = apiBaseUrl.replace(/\/$/, '');
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const url = `${normalizedBase}${normalizedPath}`;
   const isRetry = (fetchOptions as any).__isRetry;
   delete (fetchOptions as any).__isRetry;
 

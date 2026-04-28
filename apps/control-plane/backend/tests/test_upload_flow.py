@@ -340,7 +340,7 @@ async def test_non_submitter_403_on_mint(client: Any, db_setup: AsyncSession) ->
     )
 
     response = await client.post(
-        f"/submissions/{submission_id}/assets/uploads/sas",
+        f"/api/submissions/{submission_id}/assets/uploads/sas",
         json={"name": "genome.fa", "mount_path": "/mnt/data/genome.fa"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -376,7 +376,7 @@ async def test_non_submitter_403_on_finalize(client: Any, db_setup: AsyncSession
     )
 
     response = await client.post(
-        f"/submissions/{submission_id}/assets/uploads/finalize",
+        f"/api/submissions/{submission_id}/assets/uploads/finalize",
         json={
             "name": "genome.fa",
             "blob_path": f"submissions/{submission_id}/genome.fa",
@@ -418,7 +418,7 @@ async def test_list_assets_returns_empty_for_new_submission(
     )
 
     response = await client.get(
-        f"/submissions/{submission_id}/assets",
+        f"/api/submissions/{submission_id}/assets",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200

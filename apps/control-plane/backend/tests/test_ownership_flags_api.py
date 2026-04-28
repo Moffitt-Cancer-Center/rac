@@ -125,7 +125,7 @@ async def test_list_flags_returns_only_open(
     await _review_flag(db_setup, flag=flag3, reviewer_oid=admin_oid)
 
     response = await client.get(
-        "/admin/ownership/flags",
+        "/api/admin/ownership/flags",
         headers={"Authorization": f"Bearer {_admin_token(mock_oidc, admin_oid)}"},
     )
 
@@ -165,7 +165,7 @@ async def test_list_flags_returns_empty_when_all_reviewed(
     await _review_flag(db_setup, flag=flag1, reviewer_oid=admin_oid)
 
     response = await client.get(
-        "/admin/ownership/flags",
+        "/api/admin/ownership/flags",
         headers={"Authorization": f"Bearer {_admin_token(mock_oidc, admin_oid)}"},
     )
 
@@ -186,7 +186,7 @@ async def test_list_flags_non_admin_returns_403(
     user_oid = uuid4()
 
     response = await client.get(
-        "/admin/ownership/flags",
+        "/api/admin/ownership/flags",
         headers={"Authorization": f"Bearer {_user_token(mock_oidc, user_oid)}"},
     )
 
