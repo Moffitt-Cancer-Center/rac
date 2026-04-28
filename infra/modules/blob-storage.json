@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "15053082759552455154"
+      "templateHash": "5590289563490487994"
     }
   },
   "parameters": {
@@ -333,6 +333,13 @@
         "description": "Blob endpoint"
       },
       "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-05-01').primaryEndpoints.blob]"
+    },
+    "scanArtifactsContainerId": {
+      "type": "string",
+      "metadata": {
+        "description": "Scan artifacts blob container resource ID (used by pipeline-identity for least-privilege RBAC scoping)"
+      },
+      "value": "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', parameters('storageAccountName'), 'default', 'scan-artifacts')]"
     }
   }
 }

@@ -275,3 +275,6 @@ output storageAccountName string = storageAccount.name
 
 @description('Blob endpoint')
 output blobEndpoint string = storageAccount.properties.primaryEndpoints.blob
+
+@description('Scan artifacts blob container resource ID (used by pipeline-identity for least-privilege RBAC scoping)')
+output scanArtifactsContainerId string = containerScanArtifacts.id
