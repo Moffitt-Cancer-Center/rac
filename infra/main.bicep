@@ -620,6 +620,7 @@ module controlPlaneAcaApp 'modules/control-plane-aca-app.bicep' = if (deployCont
     githubPipelineRepo: controlPlaneGithubPipelineRepo
     metricsEnabled: controlPlaneMetricsEnabled
     otlpEndpoint: controlPlaneOtlpEndpoint
+    pipelineKvUri: pipelineKv.?outputs.kvUri ?? ''
     tags: commonTags
   }
 }

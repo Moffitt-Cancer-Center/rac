@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "16268204548120764141"
+      "templateHash": "7856667960394599403"
     }
   },
   "functions": [
@@ -5148,6 +5148,9 @@
           "otlpEndpoint": {
             "value": "[parameters('controlPlaneOtlpEndpoint')]"
           },
+          "pipelineKvUri": {
+            "value": "[coalesce(tryGet(if(parameters('deployPipelineKv'), reference('pipelineKv'), null()), 'outputs', 'kvUri', 'value'), '')]"
+          },
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -5159,7 +5162,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "11059889710087756413"
+              "templateHash": "13039182388532290130"
             }
           },
           "parameters": {
@@ -5209,6 +5212,13 @@
               "type": "string",
               "metadata": {
                 "description": "Platform Key Vault URI, e.g. https://kv-rac-xxxx-dev.vault.azure.net/"
+              }
+            },
+            "pipelineKvUri": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "URI of the dedicated pipeline KV (kv-rac-pipeline-...). Empty when the pipeline KV is not yet deployed; the control plane raises a loud 503 on dispatch attempts in that case."
               }
             },
             "pgHost": {
@@ -5443,7 +5453,7 @@
                         "cpu": "[json('0.5')]",
                         "memory": "1Gi"
                       },
-                      "env": "[concat(createArray(createObject('name', 'RAC_PG_PASSWORD', 'secretRef', parameters('pgPasswordSecretName')), createObject('name', 'RAC_ENV', 'value', parameters('racEnv')), createObject('name', 'RAC_INSTITUTION_NAME', 'value', parameters('institutionName')), createObject('name', 'RAC_PARENT_DOMAIN', 'value', parameters('parentDomain')), createObject('name', 'RAC_BRAND_LOGO_URL', 'value', parameters('brandLogoUrl')), createObject('name', 'RAC_IDP_TENANT_ID', 'value', parameters('idpTenantId')), createObject('name', 'RAC_IDP_CLIENT_ID', 'value', parameters('idpClientId')), createObject('name', 'RAC_IDP_API_CLIENT_ID', 'value', parameters('idpApiClientId')), createObject('name', 'RAC_PG_HOST', 'value', parameters('pgHost')), createObject('name', 'RAC_PG_PORT', 'value', '5432'), createObject('name', 'RAC_PG_DB', 'value', parameters('pgDatabase')), createObject('name', 'RAC_PG_USER', 'value', parameters('pgUser')), createObject('name', 'RAC_PG_SSL_MODE', 'value', 'require'), createObject('name', 'RAC_KV_URI', 'value', parameters('kvUri')), createObject('name', 'RAC_BLOB_ACCOUNT_URL', 'value', parameters('blobAccountUrl')), createObject('name', 'RAC_ACR_LOGIN_SERVER', 'value', parameters('acrLoginServer')), createObject('name', 'RAC_ACA_ENV_RESOURCE_ID', 'value', parameters('acaEnvResourceId')), createObject('name', 'RAC_SUBSCRIPTION_ID', 'value', parameters('subscriptionId')), createObject('name', 'RAC_RESOURCE_GROUP', 'value', parameters('tier3ResourceGroupName')), createObject('name', 'RAC_AZURE_LOCATION', 'value', parameters('location')), createObject('name', 'RAC_DNS_ZONE_NAME', 'value', parameters('dnsZoneName')), createObject('name', 'RAC_FILES_STORAGE_ACCOUNT_NAME', 'value', parameters('storageAccountName')), createObject('name', 'RAC_FILES_STORAGE_ACCOUNT_KEY_KV_SECRET_NAME', 'value', parameters('filesStorageAccountKeySecretName')), createObject('name', 'RAC_MANAGED_IDENTITY_RESOURCE_ID', 'value', parameters('controlPlaneMiResourceId')), createObject('name', 'RAC_CONTROLPLANE_MANAGED_IDENTITY_CLIENT_ID', 'value', parameters('controlPlaneMiClientId')), createObject('name', 'RAC_APP_GATEWAY_PUBLIC_IP', 'value', parameters('appGatewayPublicIp')), createObject('name', 'RAC_SCAN_SEVERITY_GATE', 'value', parameters('scanSeverityGate')), createObject('name', 'RAC_APPROVER_ROLE_RESEARCH', 'value', parameters('approverRoleResearch')), createObject('name', 'RAC_APPROVER_ROLE_IT', 'value', parameters('approverRoleIt')), createObject('name', 'RAC_PIPELINE_TIMEOUT_MINUTES', 'value', string(parameters('pipelineTimeoutMinutes'))), createObject('name', 'RAC_GH_PIPELINE_OWNER', 'value', parameters('githubPipelineOwner')), createObject('name', 'RAC_GH_PIPELINE_REPO', 'value', parameters('githubPipelineRepo')), createObject('name', 'RAC_METRICS_ENABLED', 'value', string(parameters('metricsEnabled'))), createObject('name', 'AZURE_CLIENT_ID', 'value', parameters('controlPlaneMiClientId'))), if(empty(parameters('otlpEndpoint')), createArray(), createArray(createObject('name', 'RAC_OTLP_ENDPOINT', 'value', parameters('otlpEndpoint')))))]"
+                      "env": "[concat(createArray(createObject('name', 'RAC_PG_PASSWORD', 'secretRef', parameters('pgPasswordSecretName')), createObject('name', 'RAC_ENV', 'value', parameters('racEnv')), createObject('name', 'RAC_INSTITUTION_NAME', 'value', parameters('institutionName')), createObject('name', 'RAC_PARENT_DOMAIN', 'value', parameters('parentDomain')), createObject('name', 'RAC_BRAND_LOGO_URL', 'value', parameters('brandLogoUrl')), createObject('name', 'RAC_IDP_TENANT_ID', 'value', parameters('idpTenantId')), createObject('name', 'RAC_IDP_CLIENT_ID', 'value', parameters('idpClientId')), createObject('name', 'RAC_IDP_API_CLIENT_ID', 'value', parameters('idpApiClientId')), createObject('name', 'RAC_PG_HOST', 'value', parameters('pgHost')), createObject('name', 'RAC_PG_PORT', 'value', '5432'), createObject('name', 'RAC_PG_DB', 'value', parameters('pgDatabase')), createObject('name', 'RAC_PG_USER', 'value', parameters('pgUser')), createObject('name', 'RAC_PG_SSL_MODE', 'value', 'require'), createObject('name', 'RAC_KV_URI', 'value', parameters('kvUri')), createObject('name', 'RAC_PIPELINE_KV_URI', 'value', parameters('pipelineKvUri')), createObject('name', 'RAC_BLOB_ACCOUNT_URL', 'value', parameters('blobAccountUrl')), createObject('name', 'RAC_ACR_LOGIN_SERVER', 'value', parameters('acrLoginServer')), createObject('name', 'RAC_ACA_ENV_RESOURCE_ID', 'value', parameters('acaEnvResourceId')), createObject('name', 'RAC_SUBSCRIPTION_ID', 'value', parameters('subscriptionId')), createObject('name', 'RAC_RESOURCE_GROUP', 'value', parameters('tier3ResourceGroupName')), createObject('name', 'RAC_AZURE_LOCATION', 'value', parameters('location')), createObject('name', 'RAC_DNS_ZONE_NAME', 'value', parameters('dnsZoneName')), createObject('name', 'RAC_FILES_STORAGE_ACCOUNT_NAME', 'value', parameters('storageAccountName')), createObject('name', 'RAC_FILES_STORAGE_ACCOUNT_KEY_KV_SECRET_NAME', 'value', parameters('filesStorageAccountKeySecretName')), createObject('name', 'RAC_MANAGED_IDENTITY_RESOURCE_ID', 'value', parameters('controlPlaneMiResourceId')), createObject('name', 'RAC_CONTROLPLANE_MANAGED_IDENTITY_CLIENT_ID', 'value', parameters('controlPlaneMiClientId')), createObject('name', 'RAC_APP_GATEWAY_PUBLIC_IP', 'value', parameters('appGatewayPublicIp')), createObject('name', 'RAC_SCAN_SEVERITY_GATE', 'value', parameters('scanSeverityGate')), createObject('name', 'RAC_APPROVER_ROLE_RESEARCH', 'value', parameters('approverRoleResearch')), createObject('name', 'RAC_APPROVER_ROLE_IT', 'value', parameters('approverRoleIt')), createObject('name', 'RAC_PIPELINE_TIMEOUT_MINUTES', 'value', string(parameters('pipelineTimeoutMinutes'))), createObject('name', 'RAC_GH_PIPELINE_OWNER', 'value', parameters('githubPipelineOwner')), createObject('name', 'RAC_GH_PIPELINE_REPO', 'value', parameters('githubPipelineRepo')), createObject('name', 'RAC_METRICS_ENABLED', 'value', string(parameters('metricsEnabled'))), createObject('name', 'AZURE_CLIENT_ID', 'value', parameters('controlPlaneMiClientId'))), if(empty(parameters('otlpEndpoint')), createArray(), createArray(createObject('name', 'RAC_OTLP_ENDPOINT', 'value', parameters('otlpEndpoint')))))]"
                     }
                   ],
                   "scale": {
@@ -5489,6 +5499,7 @@
         "blobStorage",
         "keyVault",
         "managedIdentity",
+        "pipelineKv",
         "postgres",
         "rg",
         "rgTier3",

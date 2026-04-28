@@ -35,6 +35,9 @@ param registryServer string
 @description('Platform Key Vault URI, e.g. https://kv-rac-xxxx-dev.vault.azure.net/')
 param kvUri string
 
+@description('URI of the dedicated pipeline KV (kv-rac-pipeline-...). Empty when the pipeline KV is not yet deployed; the control plane raises a loud 503 on dispatch attempts in that case.')
+param pipelineKvUri string = ''
+
 @description('Postgres server FQDN, e.g. rac-dev-pg-xxx.postgres.database.azure.com')
 param pgHost string
 
@@ -185,6 +188,7 @@ resource controlPlaneApp 'Microsoft.App/containerApps@2024-03-01' = {
               { name: 'RAC_PG_USER', value: pgUser }
               { name: 'RAC_PG_SSL_MODE', value: 'require' }
               { name: 'RAC_KV_URI', value: kvUri }
+              { name: 'RAC_PIPELINE_KV_URI', value: pipelineKvUri }
               { name: 'RAC_BLOB_ACCOUNT_URL', value: blobAccountUrl }
               { name: 'RAC_ACR_LOGIN_SERVER', value: acrLoginServer }
               { name: 'RAC_ACA_ENV_RESOURCE_ID', value: acaEnvResourceId }
