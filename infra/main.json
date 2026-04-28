@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "15812561880920091994"
+      "templateHash": "16268204548120764141"
     }
   },
   "functions": [
@@ -401,7 +401,7 @@
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Service principal (enterprise app) object ID of the manually-created rac-pipeline-${racEnv} app reg. Empty until app reg is provisioned per runbook. Required when deployPipelineIdentity=true; when this param is empty AND deployPipelineIdentity is true, validate fails with an empty-name template error."
+        "description": "Service principal (enterprise app) object ID of the manually-created rac-pipeline-${racEnv} app reg. Empty until app reg is provisioned per runbook. Required when deployPipelineIdentity=true. When empty AND deployPipelineIdentity=true, the module name resolves to empty string, triggering an ARM validate-time error (AC1.4 guard: deployment.name property required)."
       }
     },
     "pipelineAppClientIdDev": {

@@ -173,7 +173,7 @@ param deployPipelineKv bool = false
 @description('Microsoft Graph uniqueName of the manually-created Entra app reg rac-pipeline-\${racEnv}. Empty until app reg is provisioned per runbook. Required when deployPipelineIdentity=true.')
 param pipelineAppUniqueNameDev string = ''
 
-@description('Service principal (enterprise app) object ID of the manually-created rac-pipeline-\${racEnv} app reg. Empty until app reg is provisioned per runbook. Required when deployPipelineIdentity=true; when this param is empty AND deployPipelineIdentity is true, validate fails with an empty-name template error.')
+@description('Service principal (enterprise app) object ID of the manually-created rac-pipeline-\${racEnv} app reg. Empty until app reg is provisioned per runbook. Required when deployPipelineIdentity=true. When empty AND deployPipelineIdentity=true, the module name resolves to empty string, triggering an ARM validate-time error (AC1.4 guard: deployment.name property required).')
 param pipelineAppPrincipalIdDev string = ''
 
 @description('Application (client) ID of rac-pipeline-\${racEnv}. Captured for runbook reference + emitted as output. Optional but recommended.')
@@ -448,13 +448,14 @@ module managedIdentity 'modules/managed-identity.bicep' = {
 
 // pipelineIdentity wires FIC + 4 RBAC for the per-env rac-pipeline-${racEnv}
 // Entra app reg (pre-created manually, see docs/runbooks/bootstrap.md
-// "Pipeline Trust Setup"). Two validate-time safety guards on the `name:`
-// expression: (1) deployPipelineIdentity=true AND pipelineAppPrincipalIdDev
-// empty → name resolves to '' → ARM "deployment.name property required"
-// error; (2) deployPipelineIdentity=true AND deployPipelineKv=false
+// "Pipeline Trust Setup"). Two safety guards on the `name:` expression:
+// (1) deployPipelineIdentity=true AND pipelineAppPrincipalIdDev empty → name
+// resolves to '' → ARM "deployment.name property required" error at validate
+// time (AC1.4). (2) deployPipelineIdentity=true AND deployPipelineKv=false
 // (operationally invalid: pipeline KV must exist for the Secrets User role
-// assignment to land) → name resolves to a sentinel string visible in the
-// error message, so the operator sees what's wrong at validate time.
+// assignment to land) → name resolves to a 76-char sentinel string that
+// exceeds ARM's 64-char deployment-name limit, triggering an error at deploy
+// time (not validate time; ARM only enforces the length limit on create).
 module pipelineIdentity 'modules/pipeline-identity.bicep' = if (deployPipelineIdentity) {
   scope: rg
   name: empty(pipelineAppPrincipalIdDev)
