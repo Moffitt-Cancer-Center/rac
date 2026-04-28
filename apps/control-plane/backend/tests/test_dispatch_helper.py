@@ -218,12 +218,11 @@ async def test_dispatch_for_submission_raises_DispatchUnavailableError_when_pipe
 
 
 @pytest.mark.asyncio
-async def test_dispatch_for_submission_emits_pipeline_dispatched_log_with_triggered_by(
-    caplog: Any,
-) -> None:
+async def test_dispatch_for_submission_emits_pipeline_dispatched_log_with_triggered_by() -> None:
     """dispatch_for_submission emits 'pipeline_dispatched' log with triggered_by tag.
 
     Tests both triggered_by='submission_created' and triggered_by='admin_retry'.
+    Uses mocking to capture logger.info calls.
     """
     sub_id = uuid4()
     submission = _make_submission(id=sub_id)
@@ -231,12 +230,22 @@ async def test_dispatch_for_submission_emits_pipeline_dispatched_log_with_trigge
 
     secret_name_returned = f"rac-pipeline-cb-{sub_id}"
 
+    # Capture logger.info calls to verify the log line is emitted with correct args
+    log_calls: list[tuple[str, dict[str, Any]]] = []
+
+    def capture_info(event: str, **kwargs: Any) -> None:
+        """Capture logger.info calls."""
+        log_calls.append((event, kwargs))
+
     with patch(
         "rac_control_plane.services.pipeline_dispatch.dispatch_helper.mint_callback_secret",
         new=AsyncMock(return_value=(secret_name_returned, "x" * 64)),
     ), patch(
         "rac_control_plane.services.pipeline_dispatch.dispatch_helper.gh_dispatch.dispatch",
         new=AsyncMock(),
+    ), patch(
+        "rac_control_plane.services.pipeline_dispatch.dispatch_helper.logger.info",
+        side_effect=capture_info,
     ):
         # Test with triggered_by='submission_created'
         result_created = await dispatch_for_submission(
@@ -256,10 +265,19 @@ async def test_dispatch_for_submission_emits_pipeline_dispatched_log_with_trigge
     assert result_created["submission_id"] == str(sub_id)
     assert result_retry["submission_id"] == str(sub_id)
 
-    # Verify log lines were emitted via structlog inspection.
-    # The caplog fixture captures structlog output via the stdlib logging sink.
-    # Look for 'pipeline_dispatched' in the log records.
-    log_records = [r for r in caplog.records if "pipeline_dispatched" in r.message]
-    assert len(log_records) >= 2, (
-        f"Expected at least 2 'pipeline_dispatched' log records, found {len(log_records)}"
+    # Verify log lines were emitted with correct event name and triggered_by
+    assert len(log_calls) >= 2, (
+        f"Expected at least 2 logger.info calls, found {len(log_calls)}"
     )
+
+    # First call should have triggered_by='submission_created'
+    event_1, kwargs_1 = log_calls[0]
+    assert event_1 == "pipeline_dispatched"
+    assert kwargs_1["submission_id"] == str(sub_id)
+    assert kwargs_1["triggered_by"] == "submission_created"
+
+    # Second call should have triggered_by='admin_retry'
+    event_2, kwargs_2 = log_calls[1]
+    assert event_2 == "pipeline_dispatched"
+    assert kwargs_2["submission_id"] == str(sub_id)
+    assert kwargs_2["triggered_by"] == "admin_retry"
