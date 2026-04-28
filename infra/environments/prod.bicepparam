@@ -24,3 +24,13 @@ param actionGroupWebhookUri = ''
 param shimAppId = ''
 param controlPlaneAppId = ''
 param pipelineTimeoutMinutes = 120
+
+// ===== Phase 1+2: Pipeline Trust (codified, NOT deployed in this plan's scope) =====
+// Per design plan DoD item 3: prod is "codified in bicep but not deployed".
+// These stubs allow `az deployment sub validate` against prod to succeed.
+// A future plan provisions the rac-pipeline-prod app reg + flips the gate.
+param deployPipelineKv = false
+param deployPipelineIdentity = false
+param pipelineAppUniqueNameDev = ''
+param pipelineAppPrincipalIdDev = ''
+param pipelineAppClientIdDev = ''

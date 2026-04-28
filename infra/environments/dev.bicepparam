@@ -60,6 +60,20 @@ param controlPlaneScanSeverityGate = 'high'
 param controlPlaneApproverRoleResearch = 'rac-approver-research'
 param controlPlaneApproverRoleIt = 'rac-approver-it'
 
+// ===== Phase 1+2: Pipeline Trust (default-off; populated after manual app reg) =====
+// Two-pass deploy: pass 1 leaves deployPipelineIdentity=false; operator manually
+// creates rac-pipeline-dev app reg + GH Environment per docs/runbooks/bootstrap.md
+// "Pipeline Trust Setup", populates the three IDs below, then re-deploys with
+// deployPipelineIdentity=true and deployPipelineKv=true.
+// deployPipelineKv can flip to true on Pass 1 if you want the CP to start minting
+// callback secrets before the FIC+RBAC are wired (recommended for testing dispatch
+// flow without a live pipeline run).
+param deployPipelineKv = false
+param deployPipelineIdentity = false
+param pipelineAppUniqueNameDev = ''
+param pipelineAppPrincipalIdDev = ''
+param pipelineAppClientIdDev = ''
+
 // ===== Front Door custom domain (CustomerCertificate from bootstrap KV) =====
 // Two-pass: pass 1 leaves deployCustomDomain=false so the FD profile picks up
 // a system-assigned MI and the bootstrap-KV Secrets User role assignment runs
