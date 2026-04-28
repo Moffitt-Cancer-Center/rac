@@ -162,6 +162,23 @@ param controlPlaneMetricsEnabled bool = true
 @description('OTLP endpoint for the control plane (leave empty to disable)')
 param controlPlaneOtlpEndpoint string = ''
 
+// ===== Pipeline Trust (Phase 1+2: gated; default off) =====
+
+@description('Deploy the per-env pipeline Entra app FIC + role assignments. Set true once the manual app reg + GH Environment exist (see docs/runbooks/bootstrap.md "Pipeline Trust Setup"). Pipeline KV is created independently — see deployPipelineKv. Default false on first deploy.')
+param deployPipelineIdentity bool = false
+
+@description('Whether to create the dedicated pipeline KV (kv-rac-pipeline-...). Independent of deployPipelineIdentity so the KV can exist before the FIC and roles are wired. Recommended: deploy KV in pass 1 (so the CP can mint secrets immediately), wire FIC+RBAC in pass 2.')
+param deployPipelineKv bool = false
+
+@description('Microsoft Graph uniqueName of the manually-created Entra app reg rac-pipeline-\${racEnv}. Empty until app reg is provisioned per runbook. Required when deployPipelineIdentity=true.')
+param pipelineAppUniqueNameDev string = ''
+
+@description('Service principal (enterprise app) object ID of the manually-created rac-pipeline-\${racEnv} app reg. Empty until app reg is provisioned per runbook. Required when deployPipelineIdentity=true; when this param is empty AND deployPipelineIdentity is true, validate fails with an empty-name template error.')
+param pipelineAppPrincipalIdDev string = ''
+
+@description('Application (client) ID of rac-pipeline-\${racEnv}. Captured for runbook reference + emitted as output. Optional but recommended.')
+param pipelineAppClientIdDev string = ''
+
 // ===== Front Door custom domain (CustomerCertificate) =====
 
 @description('Whether to attach the wildcard + apex custom domains on Front Door. Requires the cert to exist in the bootstrap KV and the FD MI Secrets User role assignment to have propagated.')
@@ -242,6 +259,17 @@ module keyVault 'modules/key-vault.bicep' = {
     enablePurgeProtection: kvEnablePurgeProtection
     softDeleteRetentionInDays: kvSoftDeleteRetentionInDays
     tags: commonTags
+  }
+}
+
+module pipelineKv 'modules/pipeline-kv.bicep' = if (deployPipelineKv) {
+  scope: rg
+  name: 'deploy-pipeline-kv'
+  params: {
+    racEnv: racEnv
+    location: location
+    tags: commonTags
+    controlPlaneMiPrincipalId: managedIdentity.outputs.controlPlaneMiPrincipalId
   }
 }
 
@@ -415,6 +443,34 @@ module managedIdentity 'modules/managed-identity.bicep' = {
     location: location
     racEnv: racEnv
     tags: commonTags
+  }
+}
+
+// pipelineIdentity wires FIC + 4 RBAC for the per-env rac-pipeline-${racEnv}
+// Entra app reg (pre-created manually, see docs/runbooks/bootstrap.md
+// "Pipeline Trust Setup"). Two validate-time safety guards on the `name:`
+// expression: (1) deployPipelineIdentity=true AND pipelineAppPrincipalIdDev
+// empty → name resolves to '' → ARM "deployment.name property required"
+// error; (2) deployPipelineIdentity=true AND deployPipelineKv=false
+// (operationally invalid: pipeline KV must exist for the Secrets User role
+// assignment to land) → name resolves to a sentinel string visible in the
+// error message, so the operator sees what's wrong at validate time.
+module pipelineIdentity 'modules/pipeline-identity.bicep' = if (deployPipelineIdentity) {
+  scope: rg
+  name: empty(pipelineAppPrincipalIdDev)
+    ? '' // ← AC1.4: ARM rejects empty deployment names at validate time
+    : (!deployPipelineKv
+        ? 'GUARD-FAIL-deployPipelineKv-must-be-true-when-deployPipelineIdentity-is-true'
+        : 'deploy-pipeline-identity-${racEnv}')
+  params: {
+    racEnv: racEnv
+    pipelineAppUniqueName: pipelineAppUniqueNameDev
+    pipelineAppPrincipalId: pipelineAppPrincipalIdDev
+    pipelineGithubOwner: controlPlaneGithubPipelineOwner
+    pipelineGithubRepo: controlPlaneGithubPipelineRepo
+    acrId: acr.outputs.acrId
+    pipelineKvId: pipelineKv.?outputs.kvId ?? ''
+    artifactsBlobContainerId: blobStorage.outputs.scanArtifactsContainerId
   }
 }
 
@@ -656,3 +712,15 @@ output frontDoorWildcardValidationToken string = frontDoor.outputs.wildcardDomai
 
 @description('Front Door apex custom domain validation token (TXT for _dnsauth.<apex>) — empty when deployCustomDomain=false')
 output frontDoorApexValidationToken string = frontDoor.outputs.apexDomainValidationToken
+
+@description('Pipeline KV vault URI (empty when deployPipelineKv=false). Set RAC_PIPELINE_KV_URI env var on the control-plane container app from this value in Phase 3.')
+output pipelineKvUri string = pipelineKv.?outputs.kvUri ?? ''
+
+@description('Pipeline KV name (empty when deployPipelineKv=false). Use as the value of the GH Environment variable KV_NAME on jdkruzr/rac-pipeline (see runbook).')
+output pipelineKvName string = pipelineKv.?outputs.kvName ?? ''
+
+@description('Pipeline FIC resource ID (empty when deployPipelineIdentity=false).')
+output pipelineFicId string = pipelineIdentity.?outputs.ficResourceId ?? ''
+
+@description('Pipeline app client ID (parroted back from input; useful in runbook output for operator to copy as AZURE_CLIENT_ID into GH Environment dev secrets).')
+output pipelineAppClientId string = pipelineAppClientIdDev

@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "6405675791209238781"
+      "templateHash": "15812561880920091994"
     }
   },
   "functions": [
@@ -374,6 +374,41 @@
       "defaultValue": "",
       "metadata": {
         "description": "OTLP endpoint for the control plane (leave empty to disable)"
+      }
+    },
+    "deployPipelineIdentity": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy the per-env pipeline Entra app FIC + role assignments. Set true once the manual app reg + GH Environment exist (see docs/runbooks/bootstrap.md \"Pipeline Trust Setup\"). Pipeline KV is created independently — see deployPipelineKv. Default false on first deploy."
+      }
+    },
+    "deployPipelineKv": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Whether to create the dedicated pipeline KV (kv-rac-pipeline-...). Independent of deployPipelineIdentity so the KV can exist before the FIC and roles are wired. Recommended: deploy KV in pass 1 (so the CP can mint secrets immediately), wire FIC+RBAC in pass 2."
+      }
+    },
+    "pipelineAppUniqueNameDev": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Microsoft Graph uniqueName of the manually-created Entra app reg rac-pipeline-${racEnv}. Empty until app reg is provisioned per runbook. Required when deployPipelineIdentity=true."
+      }
+    },
+    "pipelineAppPrincipalIdDev": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Service principal (enterprise app) object ID of the manually-created rac-pipeline-${racEnv} app reg. Empty until app reg is provisioned per runbook. Required when deployPipelineIdentity=true; when this param is empty AND deployPipelineIdentity is true, validate fails with an empty-name template error."
+      }
+    },
+    "pipelineAppClientIdDev": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Application (client) ID of rac-pipeline-${racEnv}. Captured for runbook reference + emitted as output. Optional but recommended."
       }
     },
     "deployCustomDomain": {
@@ -950,6 +985,155 @@
         "rg"
       ]
     },
+    "pipelineKv": {
+      "condition": "[parameters('deployPipelineKv')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-pipeline-kv",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          },
+          "controlPlaneMiPrincipalId": {
+            "value": "[reference('managedIdentity').outputs.controlPlaneMiPrincipalId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "1777382842990332916"
+            }
+          },
+          "parameters": {
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "Environment name (dev, staging, prod)"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags applied to all resources"
+              }
+            },
+            "controlPlaneMiPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Control Plane managed identity principal ID for Key Vault Secrets Officer grant"
+              }
+            }
+          },
+          "variables": {
+            "roleIds": {
+              "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
+              "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
+              "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+              "keyVaultSecretsOfficer": "b86a8fe4-44ce-4948-aede-518c11a6e2f4",
+              "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
+              "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
+              "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+              "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
+              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+              "acrPush": "8311e382-0749-4cb8-b61a-304f252e45ec",
+              "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
+            }
+          },
+          "resources": {
+            "pipelineKv": {
+              "type": "Microsoft.KeyVault/vaults",
+              "apiVersion": "2023-07-01",
+              "name": "[format('kv-rac-pl-{0}-{1}', take(uniqueString(resourceGroup().id, parameters('racEnv')), 6), parameters('racEnv'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "tenantId": "[subscription().tenantId]",
+                "sku": {
+                  "family": "A",
+                  "name": "standard"
+                },
+                "accessPolicies": [],
+                "enableRbacAuthorization": true,
+                "enableSoftDelete": true,
+                "softDeleteRetentionInDays": 7,
+                "enablePurgeProtection": null,
+                "publicNetworkAccess": "Enabled",
+                "networkAcls": {
+                  "defaultAction": "Allow",
+                  "bypass": "AzureServices"
+                }
+              }
+            },
+            "cpKvSecretsOfficer": {
+              "condition": "[not(empty(parameters('controlPlaneMiPrincipalId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', format('kv-rac-pl-{0}-{1}', take(uniqueString(resourceGroup().id, parameters('racEnv')), 6), parameters('racEnv')))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', format('kv-rac-pl-{0}-{1}', take(uniqueString(resourceGroup().id, parameters('racEnv')), 6), parameters('racEnv'))), parameters('controlPlaneMiPrincipalId'), variables('roleIds').keyVaultSecretsOfficer)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsOfficer)]",
+                "principalId": "[parameters('controlPlaneMiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "pipelineKv"
+              ]
+            }
+          },
+          "outputs": {
+            "kvId": {
+              "type": "string",
+              "metadata": {
+                "description": "Pipeline KV resource ID"
+              },
+              "value": "[resourceId('Microsoft.KeyVault/vaults', format('kv-rac-pl-{0}-{1}', take(uniqueString(resourceGroup().id, parameters('racEnv')), 6), parameters('racEnv')))]"
+            },
+            "kvUri": {
+              "type": "string",
+              "metadata": {
+                "description": "Pipeline KV vault URI (https://...)"
+              },
+              "value": "[reference('pipelineKv').vaultUri]"
+            },
+            "kvName": {
+              "type": "string",
+              "metadata": {
+                "description": "Pipeline KV name (kv-rac-pipeline-...)"
+              },
+              "value": "[format('kv-rac-pl-{0}-{1}', take(uniqueString(resourceGroup().id, parameters('racEnv')), 6), parameters('racEnv'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "managedIdentity",
+        "rg"
+      ]
+    },
     "blobStorage": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
@@ -985,7 +1169,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "15053082759552455154"
+              "templateHash": "5590289563490487994"
             }
           },
           "parameters": {
@@ -1313,6 +1497,13 @@
                 "description": "Blob endpoint"
               },
               "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-05-01').primaryEndpoints.blob]"
+            },
+            "scanArtifactsContainerId": {
+              "type": "string",
+              "metadata": {
+                "description": "Scan artifacts blob container resource ID (used by pipeline-identity for least-privilege RBAC scoping)"
+              },
+              "value": "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', parameters('storageAccountName'), 'default', 'scan-artifacts')]"
             }
           }
         }
@@ -1679,7 +1870,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "2749130694863053286"
+              "templateHash": "5643103082360014926"
             }
           },
           "parameters": {
@@ -1740,11 +1931,14 @@
               "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
               "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
               "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+              "keyVaultSecretsOfficer": "b86a8fe4-44ce-4948-aede-518c11a6e2f4",
               "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
               "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
               "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
               "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
-              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+              "acrPush": "8311e382-0749-4cb8-b61a-304f252e45ec",
+              "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
             }
           },
           "resources": {
@@ -2191,7 +2385,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "208595333534044627"
+              "templateHash": "12294209111022494868"
             }
           },
           "parameters": {
@@ -2220,11 +2414,14 @@
               "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
               "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
               "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+              "keyVaultSecretsOfficer": "b86a8fe4-44ce-4948-aede-518c11a6e2f4",
               "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
               "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
               "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
               "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
-              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+              "acrPush": "8311e382-0749-4cb8-b61a-304f252e45ec",
+              "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
             }
           },
           "resources": {
@@ -2296,7 +2493,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "8093406412586303624"
+              "templateHash": "17975171472055846283"
             }
           },
           "parameters": {
@@ -2319,11 +2516,14 @@
               "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
               "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
               "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+              "keyVaultSecretsOfficer": "b86a8fe4-44ce-4948-aede-518c11a6e2f4",
               "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
               "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
               "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
               "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
-              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+              "acrPush": "8311e382-0749-4cb8-b61a-304f252e45ec",
+              "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
             }
           },
           "resources": {
@@ -2397,7 +2597,10 @@
           "shimFqdn": {
             "value": "[coalesce(tryGet(if(not(empty(parameters('shimImageName'))), reference('shimAcaApp'), null()), 'outputs', 'shimFqdn', 'value'), '')]"
           },
-          "controlPlaneFqdn": "[if(and(parameters('deployControlPlaneApp'), not(empty(parameters('controlPlaneImageName')))), createObject('value', format('rac-control-plane-{0}.internal.{1}', parameters('racEnv'), reference('acaEnvironment').outputs.envDefaultDomain.value)), createObject('value', ''))]",
+          "controlPlaneFqdn": "[if(and(parameters('deployControlPlaneApp'), not(empty(parameters('controlPlaneImageName')))), createObject('value', format('rac-control-plane-{0}.{1}', parameters('racEnv'), reference('acaEnvironment').outputs.envDefaultDomain.value)), createObject('value', ''))]",
+          "logAnalyticsWorkspaceId": {
+            "value": "[reference('logAnalytics').outputs.workspaceId.value]"
+          },
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -2409,7 +2612,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "17853041322562648300"
+              "templateHash": "13094681679315650463"
             }
           },
           "parameters": {
@@ -2474,6 +2677,12 @@
               "defaultValue": "cp",
               "metadata": {
                 "description": "Hostname (subdomain prefix) the control plane is reachable at, e.g. \"cp\" → cp.<parentDomain>. AppGw uses this to build the specific-host listener that takes precedence over the *.<parentDomain> wildcard listener."
+              }
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics workspace resource ID for diagnostic settings (access/firewall/performance logs + metrics)."
               }
             },
             "tags": {
@@ -2602,6 +2811,38 @@
                 "[resourceId('Microsoft.Network/publicIPAddresses', format('pip-appgw-{0}', parameters('racEnv')))]",
                 "[resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', format('waf-appgw-{0}', parameters('racEnv')))]"
               ]
+            },
+            {
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Network/applicationGateways', parameters('appGwName'))]",
+              "name": "diag-appgw-to-la",
+              "properties": {
+                "workspaceId": "[parameters('logAnalyticsWorkspaceId')]",
+                "logs": [
+                  {
+                    "category": "ApplicationGatewayAccessLog",
+                    "enabled": true
+                  },
+                  {
+                    "category": "ApplicationGatewayPerformanceLog",
+                    "enabled": true
+                  },
+                  {
+                    "category": "ApplicationGatewayFirewallLog",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/applicationGateways', parameters('appGwName'))]"
+              ]
             }
           ],
           "outputs": {
@@ -2632,6 +2873,7 @@
       "dependsOn": [
         "acaEnvironment",
         "bootstrapKvRbac",
+        "logAnalytics",
         "managedIdentity",
         "network",
         "rg",
@@ -3132,6 +3374,245 @@
         "rg"
       ]
     },
+    "pipelineIdentity": {
+      "condition": "[parameters('deployPipelineIdentity')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[if(empty(parameters('pipelineAppPrincipalIdDev')), '', if(not(parameters('deployPipelineKv')), 'GUARD-FAIL-deployPipelineKv-must-be-true-when-deployPipelineIdentity-is-true', format('deploy-pipeline-identity-{0}', parameters('racEnv'))))]",
+      "resourceGroup": "[format('rg-rac-{0}', parameters('racEnv'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "racEnv": {
+            "value": "[parameters('racEnv')]"
+          },
+          "pipelineAppUniqueName": {
+            "value": "[parameters('pipelineAppUniqueNameDev')]"
+          },
+          "pipelineAppPrincipalId": {
+            "value": "[parameters('pipelineAppPrincipalIdDev')]"
+          },
+          "pipelineGithubOwner": {
+            "value": "[parameters('controlPlaneGithubPipelineOwner')]"
+          },
+          "pipelineGithubRepo": {
+            "value": "[parameters('controlPlaneGithubPipelineRepo')]"
+          },
+          "acrId": {
+            "value": "[reference('acr').outputs.acrId.value]"
+          },
+          "pipelineKvId": {
+            "value": "[coalesce(tryGet(if(parameters('deployPipelineKv'), reference('pipelineKv'), null()), 'outputs', 'kvId', 'value'), '')]"
+          },
+          "artifactsBlobContainerId": {
+            "value": "[reference('blobStorage').outputs.scanArtifactsContainerId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "12689373130074969664"
+            }
+          },
+          "parameters": {
+            "racEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "Environment name (dev, staging, prod)"
+              }
+            },
+            "pipelineAppUniqueName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Pipeline app registration unique name (from az ad app create)"
+              }
+            },
+            "pipelineAppPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Pipeline app registration principal ID (object ID, empty on Pass-1 deploy)"
+              }
+            },
+            "pipelineGithubOwner": {
+              "type": "string",
+              "metadata": {
+                "description": "GitHub repo owner (for FIC subject)"
+              }
+            },
+            "pipelineGithubRepo": {
+              "type": "string",
+              "metadata": {
+                "description": "GitHub repo name (for FIC subject)"
+              }
+            },
+            "acrId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "ACR resource ID"
+              }
+            },
+            "pipelineKvId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Pipeline Key Vault resource ID (from pipeline-kv.bicep output)"
+              }
+            },
+            "artifactsBlobContainerId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Artifacts blob container resource ID (format: {storageAcctId}/blobServices/default/containers/scan-artifacts)"
+              }
+            }
+          },
+          "variables": {
+            "roleIds": {
+              "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
+              "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
+              "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+              "keyVaultSecretsOfficer": "b86a8fe4-44ce-4948-aede-518c11a6e2f4",
+              "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
+              "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
+              "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+              "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
+              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+              "acrPush": "8311e382-0749-4cb8-b61a-304f252e45ec",
+              "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
+            }
+          },
+          "imports": {
+            "MicrosoftGraph": {
+              "provider": "MicrosoftGraph",
+              "version": "0.1.8-preview"
+            }
+          },
+          "resources": {
+            "acr": {
+              "condition": "[not(empty(parameters('acrId')))]",
+              "existing": true,
+              "type": "Microsoft.ContainerRegistry/registries",
+              "apiVersion": "2023-07-01",
+              "name": "[last(split(parameters('acrId'), '/'))]"
+            },
+            "pipelineKv": {
+              "condition": "[not(empty(parameters('pipelineKvId')))]",
+              "existing": true,
+              "type": "Microsoft.KeyVault/vaults",
+              "apiVersion": "2023-07-01",
+              "name": "[last(split(parameters('pipelineKvId'), '/'))]"
+            },
+            "artifactsContainer": {
+              "condition": "[not(empty(parameters('artifactsBlobContainerId')))]",
+              "existing": true,
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/')))]"
+            },
+            "pipelineFic": {
+              "condition": "[not(empty(parameters('pipelineAppUniqueName')))]",
+              "import": "MicrosoftGraph",
+              "type": "Microsoft.Graph/applications/federatedIdentityCredentials@v1.0",
+              "properties": {
+                "name": "[format('{0}/rac-pipeline-{1}-gha', parameters('pipelineAppUniqueName'), parameters('racEnv'))]",
+                "audiences": [
+                  "api://AzureADTokenExchange"
+                ],
+                "issuer": "https://token.actions.githubusercontent.com",
+                "subject": "[format('repo:{0}/{1}:environment:{2}', parameters('pipelineGithubOwner'), parameters('pipelineGithubRepo'), parameters('racEnv'))]",
+                "description": "[format('GitHub Actions OIDC for {0}/{1} on environment {2}', parameters('pipelineGithubOwner'), parameters('pipelineGithubRepo'), parameters('racEnv'))]"
+              }
+            },
+            "raAcrPull": {
+              "condition": "[and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('acrId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/'))), parameters('pipelineAppPrincipalId'), variables('roleIds').acrPull)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').acrPull)]",
+                "principalId": "[parameters('pipelineAppPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            "raAcrPush": {
+              "condition": "[and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('acrId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/'))), parameters('pipelineAppPrincipalId'), variables('roleIds').acrPush)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').acrPush)]",
+                "principalId": "[parameters('pipelineAppPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            "raKvSecretsUser": {
+              "condition": "[and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('pipelineKvId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', last(split(parameters('pipelineKvId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('pipelineKvId'), '/'))), parameters('pipelineAppPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsUser)]",
+                "principalId": "[parameters('pipelineAppPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            "raBlobContributor": {
+              "condition": "[and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('artifactsBlobContainerId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[0], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[1], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[2])]",
+              "name": "[guid(resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[0], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[1], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[2]), parameters('pipelineAppPrincipalId'), variables('roleIds').storageBlobDataContributor)]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').storageBlobDataContributor)]",
+                "principalId": "[parameters('pipelineAppPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          },
+          "outputs": {
+            "ficResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "FIC resource ID (empty when pipelineAppUniqueName is empty)"
+              },
+              "value": "[coalesce(tryGet(reference('pipelineFic'), 'id'), '')]"
+            },
+            "roleAssignmentIds": {
+              "type": "array",
+              "metadata": {
+                "description": "Resource IDs of the four role assignments. Empty strings for those skipped by guards."
+              },
+              "value": [
+                "[if(and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('acrId')))), extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/'))), parameters('pipelineAppPrincipalId'), variables('roleIds').acrPull)), '')]",
+                "[if(and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('acrId')))), extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/'))), parameters('pipelineAppPrincipalId'), variables('roleIds').acrPush)), '')]",
+                "[if(and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('pipelineKvId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('pipelineKvId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('pipelineKvId'), '/'))), parameters('pipelineAppPrincipalId'), variables('roleIds').keyVaultSecretsUser)), '')]",
+                "[if(and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('artifactsBlobContainerId')))), extensionResourceId(resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[0], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[1], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[2]), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[0], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[1], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[2]), parameters('pipelineAppPrincipalId'), variables('roleIds').storageBlobDataContributor)), '')]"
+              ]
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "acr",
+        "blobStorage",
+        "pipelineKv",
+        "rg"
+      ]
+    },
     "roleAssignmentsKv": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
@@ -3164,7 +3645,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "5631733029566100036"
+              "templateHash": "10745715617169785538"
             }
           },
           "parameters": {
@@ -3209,11 +3690,14 @@
               "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
               "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
               "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+              "keyVaultSecretsOfficer": "b86a8fe4-44ce-4948-aede-518c11a6e2f4",
               "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
               "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
               "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
               "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
-              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+              "acrPush": "8311e382-0749-4cb8-b61a-304f252e45ec",
+              "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
             }
           },
           "resources": {
@@ -3394,7 +3878,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "5631733029566100036"
+              "templateHash": "10745715617169785538"
             }
           },
           "parameters": {
@@ -3439,11 +3923,14 @@
               "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
               "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
               "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+              "keyVaultSecretsOfficer": "b86a8fe4-44ce-4948-aede-518c11a6e2f4",
               "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
               "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
               "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
               "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
-              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+              "acrPush": "8311e382-0749-4cb8-b61a-304f252e45ec",
+              "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
             }
           },
           "resources": {
@@ -3620,7 +4107,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "5631733029566100036"
+              "templateHash": "10745715617169785538"
             }
           },
           "parameters": {
@@ -3665,11 +4152,14 @@
               "dnsZoneContributor": "befefa01-2a29-4197-83a8-272ff33ce314",
               "keyVaultCryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
               "keyVaultCryptoUser": "12338af0-0e69-4776-bea7-57ae8d297424",
+              "keyVaultSecretsOfficer": "b86a8fe4-44ce-4948-aede-518c11a6e2f4",
               "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
               "keyVaultCertificatesUser": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
               "contributor": "b24988ac-6180-42a0-ab88-20f7382dd24c",
               "storageAccountKeyOperatorServiceRole": "81a9662b-bebf-436f-a333-f67b29880f12",
-              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+              "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+              "acrPush": "8311e382-0749-4cb8-b61a-304f252e45ec",
+              "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
             }
           },
           "resources": {
@@ -5611,6 +6101,34 @@
         "description": "Front Door apex custom domain validation token (TXT for _dnsauth.<apex>) — empty when deployCustomDomain=false"
       },
       "value": "[reference('frontDoor').outputs.apexDomainValidationToken.value]"
+    },
+    "pipelineKvUri": {
+      "type": "string",
+      "metadata": {
+        "description": "Pipeline KV vault URI (empty when deployPipelineKv=false). Set RAC_PIPELINE_KV_URI env var on the control-plane container app from this value in Phase 3."
+      },
+      "value": "[coalesce(tryGet(if(parameters('deployPipelineKv'), reference('pipelineKv'), null()), 'outputs', 'kvUri', 'value'), '')]"
+    },
+    "pipelineKvName": {
+      "type": "string",
+      "metadata": {
+        "description": "Pipeline KV name (empty when deployPipelineKv=false). Use as the value of the GH Environment variable KV_NAME on jdkruzr/rac-pipeline (see runbook)."
+      },
+      "value": "[coalesce(tryGet(if(parameters('deployPipelineKv'), reference('pipelineKv'), null()), 'outputs', 'kvName', 'value'), '')]"
+    },
+    "pipelineFicId": {
+      "type": "string",
+      "metadata": {
+        "description": "Pipeline FIC resource ID (empty when deployPipelineIdentity=false)."
+      },
+      "value": "[coalesce(tryGet(if(parameters('deployPipelineIdentity'), reference('pipelineIdentity'), null()), 'outputs', 'ficResourceId', 'value'), '')]"
+    },
+    "pipelineAppClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "Pipeline app client ID (parroted back from input; useful in runbook output for operator to copy as AZURE_CLIENT_ID into GH Environment dev secrets)."
+      },
+      "value": "[parameters('pipelineAppClientIdDev')]"
     }
   }
 }
