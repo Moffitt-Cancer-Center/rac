@@ -13,8 +13,12 @@ from uuid import UUID
 
 import structlog
 from cachetools import TTLCache
+from kiota_abstractions.base_request_configuration import RequestConfiguration
 from msgraph import GraphServiceClient  # type: ignore[attr-defined]
 from msgraph.generated.models.o_data_errors.o_data_error import ODataError
+from msgraph.generated.users.item.user_item_request_builder import (
+    UserItemRequestBuilder,
+)
 
 from rac_control_plane.provisioning.credentials import get_graph_client
 from rac_control_plane.settings import get_settings
@@ -78,15 +82,40 @@ async def get_user(
     max_retries = 3
     backoff = 1.0
 
+    # Graph's default response for /users/{id} omits accountEnabled (and
+    # several others). Without an explicit $select the SDK leaves
+    # user.account_enabled = None, which used to fall through bool() as
+    # False — making every live user look "disabled". Always select.
+    request_config = RequestConfiguration(
+        query_parameters=UserItemRequestBuilder.UserItemRequestBuilderGetQueryParameters(
+            select=[
+                "id",
+                "accountEnabled",
+                "displayName",
+                "userPrincipalName",
+                "department",
+            ],
+        ),
+    )
+
     for attempt in range(max_retries):
         try:
-            user = await effective_client.users.by_user_id(str(oid)).get()
+            user = await effective_client.users.by_user_id(str(oid)).get(
+                request_configuration=request_config
+            )
             if user is None:
                 return None
 
+            # Treat a missing accountEnabled (None) as "active" — the user
+            # exists, Graph just didn't tell us the flag. Only an explicit
+            # False indicates a disabled account.
+            account_enabled = (
+                True if user.account_enabled is None else bool(user.account_enabled)
+            )
+
             graph_user = GraphUser(
                 oid=oid,
-                account_enabled=bool(user.account_enabled),
+                account_enabled=account_enabled,
                 display_name=user.display_name,
                 user_principal_name=user.user_principal_name,
                 department=user.department,
