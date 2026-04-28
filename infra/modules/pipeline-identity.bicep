@@ -54,11 +54,11 @@ param artifactsBlobContainerId string = ''
 // the null-flow analyzer (BCP318) when other resources reference it.
 
 resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = if (!empty(acrId)) {
-  name: !empty(acrId) ? last(split(acrId, '/')) : 'placeholder-acr'
+  name: last(split(acrId, '/'))
 }
 
 resource pipelineKv 'Microsoft.KeyVault/vaults@2023-07-01' existing = if (!empty(pipelineKvId)) {
-  name: !empty(pipelineKvId) ? last(split(pipelineKvId, '/')) : 'placeholder-kv'
+  name: last(split(pipelineKvId, '/'))
 }
 
 // Container resourceId format: {storageAcctId}/blobServices/default/containers/{name}
@@ -67,7 +67,7 @@ resource artifactsContainer 'Microsoft.Storage/storageAccounts/blobServices/cont
   // Use the parent-by-symbolic-reference pattern; alternative is the
   // 'storageAcct/default/containerName' name-string but that is fragile.
   // Construct the parent chain from the resourceId.
-  name: !empty(artifactsBlobContainerId) ? '${split(artifactsBlobContainerId, '/')[8]}/default/${last(split(artifactsBlobContainerId, '/'))}' : 'placeholder/default/placeholder'
+  name: '${split(artifactsBlobContainerId, '/')[8]}/default/${last(split(artifactsBlobContainerId, '/'))}'
 }
 
 // ========== FEDERATED IDENTITY CREDENTIAL ==========

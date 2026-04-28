@@ -24,7 +24,7 @@ param tags object
 param controlPlaneMiPrincipalId string = ''
 
 resource pipelineKv 'Microsoft.KeyVault/vaults@2023-07-01' = {
-  name: 'kv-rac-pipeline-${uniqueString(resourceGroup().id, racEnv)}-${racEnv}'
+  name: 'kv-rac-pl-${take(uniqueString(resourceGroup().id, racEnv), 6)}-${racEnv}'
   location: location
   tags: tags
   properties: {

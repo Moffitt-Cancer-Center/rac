@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "15774835300614319325"
+      "templateHash": "12689373130074969664"
     }
   },
   "parameters": {
@@ -91,21 +91,21 @@
       "existing": true,
       "type": "Microsoft.ContainerRegistry/registries",
       "apiVersion": "2023-07-01",
-      "name": "[if(not(empty(parameters('acrId'))), last(split(parameters('acrId'), '/')), 'placeholder-acr')]"
+      "name": "[last(split(parameters('acrId'), '/'))]"
     },
     "pipelineKv": {
       "condition": "[not(empty(parameters('pipelineKvId')))]",
       "existing": true,
       "type": "Microsoft.KeyVault/vaults",
       "apiVersion": "2023-07-01",
-      "name": "[if(not(empty(parameters('pipelineKvId'))), last(split(parameters('pipelineKvId'), '/')), 'placeholder-kv')]"
+      "name": "[last(split(parameters('pipelineKvId'), '/'))]"
     },
     "artifactsContainer": {
       "condition": "[not(empty(parameters('artifactsBlobContainerId')))]",
       "existing": true,
       "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
       "apiVersion": "2023-05-01",
-      "name": "[if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder')]"
+      "name": "[format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/')))]"
     },
     "pipelineFic": {
       "condition": "[not(empty(parameters('pipelineAppUniqueName')))]",
@@ -125,8 +125,8 @@
       "condition": "[and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('acrId'))))]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "scope": "[resourceId('Microsoft.ContainerRegistry/registries', if(not(empty(parameters('acrId'))), last(split(parameters('acrId'), '/')), 'placeholder-acr'))]",
-      "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', if(not(empty(parameters('acrId'))), last(split(parameters('acrId'), '/')), 'placeholder-acr')), parameters('pipelineAppPrincipalId'), variables('roleIds').acrPull)]",
+      "scope": "[resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/')))]",
+      "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/'))), parameters('pipelineAppPrincipalId'), variables('roleIds').acrPull)]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').acrPull)]",
         "principalId": "[parameters('pipelineAppPrincipalId')]",
@@ -137,8 +137,8 @@
       "condition": "[and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('acrId'))))]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "scope": "[resourceId('Microsoft.ContainerRegistry/registries', if(not(empty(parameters('acrId'))), last(split(parameters('acrId'), '/')), 'placeholder-acr'))]",
-      "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', if(not(empty(parameters('acrId'))), last(split(parameters('acrId'), '/')), 'placeholder-acr')), parameters('pipelineAppPrincipalId'), variables('roleIds').acrPush)]",
+      "scope": "[resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/')))]",
+      "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/'))), parameters('pipelineAppPrincipalId'), variables('roleIds').acrPush)]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').acrPush)]",
         "principalId": "[parameters('pipelineAppPrincipalId')]",
@@ -149,8 +149,8 @@
       "condition": "[and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('pipelineKvId'))))]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "scope": "[resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('pipelineKvId'))), last(split(parameters('pipelineKvId'), '/')), 'placeholder-kv'))]",
-      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('pipelineKvId'))), last(split(parameters('pipelineKvId'), '/')), 'placeholder-kv')), parameters('pipelineAppPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
+      "scope": "[resourceId('Microsoft.KeyVault/vaults', last(split(parameters('pipelineKvId'), '/')))]",
+      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('pipelineKvId'), '/'))), parameters('pipelineAppPrincipalId'), variables('roleIds').keyVaultSecretsUser)]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').keyVaultSecretsUser)]",
         "principalId": "[parameters('pipelineAppPrincipalId')]",
@@ -161,8 +161,8 @@
       "condition": "[and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('artifactsBlobContainerId'))))]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "scope": "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder'), '/')[0], split(if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder'), '/')[1], split(if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder'), '/')[2])]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder'), '/')[0], split(if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder'), '/')[1], split(if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder'), '/')[2]), parameters('pipelineAppPrincipalId'), variables('roleIds').storageBlobDataContributor)]",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[0], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[1], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[2])]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[0], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[1], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[2]), parameters('pipelineAppPrincipalId'), variables('roleIds').storageBlobDataContributor)]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleIds').storageBlobDataContributor)]",
         "principalId": "[parameters('pipelineAppPrincipalId')]",
@@ -184,10 +184,10 @@
         "description": "Resource IDs of the four role assignments. Empty strings for those skipped by guards."
       },
       "value": [
-        "[if(and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('acrId')))), extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', if(not(empty(parameters('acrId'))), last(split(parameters('acrId'), '/')), 'placeholder-acr')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', if(not(empty(parameters('acrId'))), last(split(parameters('acrId'), '/')), 'placeholder-acr')), parameters('pipelineAppPrincipalId'), variables('roleIds').acrPull)), '')]",
-        "[if(and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('acrId')))), extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', if(not(empty(parameters('acrId'))), last(split(parameters('acrId'), '/')), 'placeholder-acr')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', if(not(empty(parameters('acrId'))), last(split(parameters('acrId'), '/')), 'placeholder-acr')), parameters('pipelineAppPrincipalId'), variables('roleIds').acrPush)), '')]",
-        "[if(and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('pipelineKvId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('pipelineKvId'))), last(split(parameters('pipelineKvId'), '/')), 'placeholder-kv')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', if(not(empty(parameters('pipelineKvId'))), last(split(parameters('pipelineKvId'), '/')), 'placeholder-kv')), parameters('pipelineAppPrincipalId'), variables('roleIds').keyVaultSecretsUser)), '')]",
-        "[if(and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('artifactsBlobContainerId')))), extensionResourceId(resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder'), '/')[0], split(if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder'), '/')[1], split(if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder'), '/')[2]), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder'), '/')[0], split(if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder'), '/')[1], split(if(not(empty(parameters('artifactsBlobContainerId'))), format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), 'placeholder/default/placeholder'), '/')[2]), parameters('pipelineAppPrincipalId'), variables('roleIds').storageBlobDataContributor)), '')]"
+        "[if(and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('acrId')))), extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/'))), parameters('pipelineAppPrincipalId'), variables('roleIds').acrPull)), '')]",
+        "[if(and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('acrId')))), extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/'))), parameters('pipelineAppPrincipalId'), variables('roleIds').acrPush)), '')]",
+        "[if(and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('pipelineKvId')))), extensionResourceId(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('pipelineKvId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', last(split(parameters('pipelineKvId'), '/'))), parameters('pipelineAppPrincipalId'), variables('roleIds').keyVaultSecretsUser)), '')]",
+        "[if(and(not(empty(parameters('pipelineAppPrincipalId'))), not(empty(parameters('artifactsBlobContainerId')))), extensionResourceId(resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[0], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[1], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[2]), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[0], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[1], split(format('{0}/default/{1}', split(parameters('artifactsBlobContainerId'), '/')[8], last(split(parameters('artifactsBlobContainerId'), '/'))), '/')[2]), parameters('pipelineAppPrincipalId'), variables('roleIds').storageBlobDataContributor)), '')]"
       ]
     }
   }
