@@ -168,23 +168,30 @@ echo "SP_OBJECT_ID=$SP_OBJECT_ID"  # bicepparam pipelineAppPrincipalIdDev source
 
 > Save the four IDs (`PIPELINE_APP_ID`, `PIPELINE_APP_OBJECT_ID`, `PIPELINE_APP_UNIQUENAME`, `SP_OBJECT_ID`) — you'll paste each into a different place in the next steps.
 
-### 3.5.2 Add the deploy SP as Owner of the new app reg
+### 3.5.2 Add the deploying principal as Owner of the new app reg
 
 The bicep module `pipeline-identity.bicep` creates a child
 `Microsoft.Graph/applications/federatedIdentityCredentials@v1.0`
 resource under this app reg. Microsoft Graph requires the deploying
 principal to be an Owner of the parent app to manage child credentials.
 
+The "deploying principal" is whoever runs `az deployment sub create` —
+either a dedicated `rac-infra-deploy` SP (preferred for CI/CD; see §1)
+or the operator's own user account (common for local dev).
+
 ```bash
-DEPLOY_SP_OBJECT_ID="<rac-infra-deploy SP object ID — see §1 of this runbook>"
+# If deploying as a dedicated SP:
+#   DEPLOY_PRINCIPAL_ID="<rac-infra-deploy SP object ID — see §1>"
+# If deploying as your own user (local dev):
+DEPLOY_PRINCIPAL_ID=$(az ad signed-in-user show --query id -o tsv)
 
 az ad app owner add \
   --id "$PIPELINE_APP_OBJECT_ID" \
-  --owner-object-id "$DEPLOY_SP_OBJECT_ID"
+  --owner-object-id "$DEPLOY_PRINCIPAL_ID"
 
 # Verify ownership was added
 az ad app owner list --id "$PIPELINE_APP_OBJECT_ID" --query "[].id" -o tsv
-# Expected: includes $DEPLOY_SP_OBJECT_ID.
+# Expected: includes $DEPLOY_PRINCIPAL_ID.
 ```
 
 ### 3.5.3 Create the GitHub Environment + secrets + variables
