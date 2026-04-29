@@ -59,6 +59,13 @@ param controlPlaneInstitutionName = 'RAC Demo (checkwithscience.com)'
 param controlPlaneScanSeverityGate = 'high'
 param controlPlaneApproverRoleResearch = 'rac-approver-research'
 param controlPlaneApproverRoleIt = 'rac-approver-it'
+// GitHub owner of the rac-pipeline repo. Drives both:
+//   (a) the CP's RAC_GH_PIPELINE_OWNER env var (repository_dispatch URL), and
+//   (b) the FIC subject 'repo:${owner}/${repo}:environment:${env}'.
+// Defaults to '' in main.bicep — must be set per env or the FIC subject
+// renders as 'repo:/rac-pipeline:environment:dev' which won't match any
+// real GHA OIDC token claim.
+param controlPlaneGithubPipelineOwner = 'jdkruzr'
 
 // ===== Phase 1+2: Pipeline Trust (default-off; populated after manual app reg) =====
 // Two-pass deploy: pass 1 leaves deployPipelineIdentity=false; operator manually
