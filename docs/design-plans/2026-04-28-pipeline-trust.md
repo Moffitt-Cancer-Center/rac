@@ -49,7 +49,7 @@ cycle with no manual intervention and no stuck states.
    Environment with the three secrets (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
    `AZURE_SUBSCRIPTION_ID`) and five variables (`ACR_NAME`, `ACR_LOGIN_SERVER`,
    `BLOB_ACCOUNT_URL`, `KV_NAME`, `SEVERITY_GATE`). Documented in
-   `docs/runbooks/bootstrap.md`.
+   [`docs/runbooks/bootstrap.md`](../runbooks/bootstrap.md#35-pipeline-trust-setup).
 
 5. **`create.py` placeholder-secret bug fixed**: original create-submission
    dispatch path mints the per-submission KV callback secret (same as the
