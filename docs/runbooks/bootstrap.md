@@ -146,10 +146,19 @@ APP_REG_JSON=$(az ad app create \
 
 PIPELINE_APP_ID=$(echo "$APP_REG_JSON"   | jq -r .appId)
 PIPELINE_APP_OBJECT_ID=$(echo "$APP_REG_JSON"   | jq -r .id)
-PIPELINE_APP_UNIQUENAME=$(echo "$APP_REG_JSON" | jq -r .uniqueName)
 
 echo "PIPELINE_APP_ID=$PIPELINE_APP_ID"               # GH secret AZURE_CLIENT_ID
 echo "PIPELINE_APP_OBJECT_ID=$PIPELINE_APP_OBJECT_ID" # captured for reference; not used directly in bicepparam
+
+# `az ad app create` does NOT set the Microsoft Graph `uniqueName` field
+# (it remains null on the created resource). The bicep module addresses
+# the app reg via `uniqueName`, so we PATCH it explicitly here.
+az rest --method PATCH \
+  --uri "https://graph.microsoft.com/v1.0/applications/${PIPELINE_APP_OBJECT_ID}" \
+  --headers "Content-Type=application/json" \
+  --body "{\"uniqueName\": \"rac-pipeline-${ENV}\"}"
+
+PIPELINE_APP_UNIQUENAME=$(az ad app show --id "$PIPELINE_APP_OBJECT_ID" --query uniqueName -o tsv)
 echo "PIPELINE_APP_UNIQUENAME=$PIPELINE_APP_UNIQUENAME" # bicepparam pipelineAppUniqueNameDev source
 
 # Create the matching enterprise-app (service principal). Capture its objectId.
