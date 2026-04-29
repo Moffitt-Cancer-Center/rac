@@ -166,11 +166,11 @@ def test_pipeline_kv_uri_loaded_from_env() -> None:
     os.environ["RAC_SCAN_SEVERITY_GATE"] = "high"
     os.environ["RAC_APPROVER_ROLE_RESEARCH"] = "ResearchApprover"
     os.environ["RAC_APPROVER_ROLE_IT"] = "ITApprover"
-    os.environ["RAC_PIPELINE_KV_URI"] = "https://kv-rac-pipeline-foo-dev.vault.azure.net/"
+    os.environ["RAC_PIPELINE_KV_URI"] = "https://kv-rac-pl-foo-dev.vault.azure.net/"
 
     try:
         settings = Settings()
-        assert settings.pipeline_kv_uri == "https://kv-rac-pipeline-foo-dev.vault.azure.net/"
+        assert settings.pipeline_kv_uri == "https://kv-rac-pl-foo-dev.vault.azure.net/"
     finally:
         # Clean up environment
         for key in list(os.environ.keys()):
