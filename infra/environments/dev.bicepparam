@@ -68,11 +68,11 @@ param controlPlaneApproverRoleIt = 'rac-approver-it'
 // deployPipelineKv can flip to true on Pass 1 if you want the CP to start minting
 // callback secrets before the FIC+RBAC are wired (recommended for testing dispatch
 // flow without a live pipeline run).
-param deployPipelineKv = false
-param deployPipelineIdentity = false
-param pipelineAppUniqueNameDev = ''
-param pipelineAppPrincipalIdDev = ''
-param pipelineAppClientIdDev = ''
+param deployPipelineKv = true
+param deployPipelineIdentity = true
+param pipelineAppUniqueNameDev = 'rac-pipeline-dev'
+param pipelineAppPrincipalIdDev = '06855294-f2d9-4d1b-aaee-3e6ca80e10ba'
+param pipelineAppClientIdDev = 'b9a23e53-9f35-44b6-94fc-763f1a1bf834'
 
 // ===== Front Door custom domain (CustomerCertificate from bootstrap KV) =====
 // Two-pass: pass 1 leaves deployCustomDomain=false so the FD profile picks up
