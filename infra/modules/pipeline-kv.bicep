@@ -68,5 +68,5 @@ output kvId string = pipelineKv.id
 @description('Pipeline KV vault URI (https://...)')
 output kvUri string = pipelineKv.properties.vaultUri
 
-@description('Pipeline KV name (kv-rac-pipeline-...)')
+@description('Pipeline KV name (kv-rac-pl-...)')
 output kvName string = pipelineKv.name

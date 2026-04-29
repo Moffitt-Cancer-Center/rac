@@ -81,7 +81,7 @@ logging aggregation; idempotency 5xx semantics fix; Graph 403 mapping.
 
 ### pipeline-trust.AC2: Per-resource least-privilege RBAC
 - **pipeline-trust.AC2.1 Success:** AcrPull + AcrPush role assignments are scoped to the env ACR's `resourceId`, not RG, not subscription.
-- **pipeline-trust.AC2.2 Success:** KV Secrets User role assignment is scoped to the env's **pipeline KV** (`kv-rac-pipeline-...`), NOT the platform KV (`kv-rac-...`).
+- **pipeline-trust.AC2.2 Success:** KV Secrets User role assignment is scoped to the env's **pipeline KV** (`kv-rac-pl-...`), NOT the platform KV (`kv-rac-...`).
 - **pipeline-trust.AC2.3 Success:** Storage Blob Data Contributor is scoped to the artifacts container's `resourceId`, not the storage account.
 - **pipeline-trust.AC2.4 Failure:** grep over the deployed bicep `.json` artifacts shows zero role assignments at RG, subscription, or platform-KV scope for the pipeline principal.
 - **pipeline-trust.AC2.5 Edge:** when `pipelineAppPrincipalId` is empty, the conditional guards skip role-assignment creation (no empty-principal assignments emitted).
@@ -95,7 +95,7 @@ logging aggregation; idempotency 5xx semantics fix; Graph 403 mapping.
 - **pipeline-trust.AC4.1 Success:** `gh api /repos/jdkruzr/rac-pipeline/environments/dev` returns 200.
 - **pipeline-trust.AC4.2 Success:** `gh secret list --env dev --repo jdkruzr/rac-pipeline` shows all three of `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
 - **pipeline-trust.AC4.3 Success:** `gh variable list --env dev --repo jdkruzr/rac-pipeline` shows all five of `ACR_NAME`, `ACR_LOGIN_SERVER`, `BLOB_ACCOUNT_URL`, `KV_NAME`, `SEVERITY_GATE`.
-- **pipeline-trust.AC4.4 Success:** the value of `KV_NAME` equals the pipeline KV's name (`kv-rac-pipeline-...`), NOT the platform KV's name.
+- **pipeline-trust.AC4.4 Success:** the value of `KV_NAME` equals the pipeline KV's name (`kv-rac-pl-...`), NOT the platform KV's name.
 - **pipeline-trust.AC4.5 Success:** `docs/runbooks/bootstrap.md` contains a "Pipeline Trust Setup" section with the manual app-reg + GH-Environment + bicepparam + verification steps.
 
 ### pipeline-trust.AC5: `create.py` placeholder-secret bug fixed
@@ -113,7 +113,7 @@ logging aggregation; idempotency 5xx semantics fix; Graph 403 mapping.
 
 ### pipeline-trust.AC7: End-to-end verification on live dev
 - **pipeline-trust.AC7.1 Success:** a previously-stuck submission re-dispatched via `POST /api/admin/submissions/{id}/dispatch/retry` produces a GH Actions workflow run where the `Azure login (OIDC)` step exits 0 (was failing before this plan).
-- **pipeline-trust.AC7.2 Success:** the same workflow's `Fetch callback secret` step successfully reads `rac-pipeline-cb-{submission_id}` from `kv-rac-pipeline-dev`.
+- **pipeline-trust.AC7.2 Success:** the same workflow's `Fetch callback secret` step successfully reads `rac-pipeline-cb-{submission_id}` from `kv-rac-pl-dev`.
 - **pipeline-trust.AC7.3 Success:** the workflow completes build+scan, POSTs an HMAC-signed callback to the control plane, and the callback is accepted (HTTP 200).
 - **pipeline-trust.AC7.4 Success:** the submission FSM advances out of `awaiting_scan` to either `awaiting_research_review` or `severity_gate_failed` (depending on the test image's scan verdict).
 - **pipeline-trust.AC7.5 Failure:** a fresh submission attempted while the live control plane has `RAC_GH_PAT` unset returns 503 (in-prod replication of AC6.1).
@@ -161,7 +161,7 @@ logging aggregation; idempotency 5xx semantics fix; Graph 403 mapping.
   containers.
 - **Platform KV vs. pipeline KV**: The platform KV (`kv-rac-...`) holds
   infrastructure secrets — database passwords, TLS certificates, JWS
-  signing keys. The pipeline KV (`kv-rac-pipeline-...`) holds only
+  signing keys. The pipeline KV (`kv-rac-pl-...`) holds only
   per-submission HMAC callback secrets. Keeping them separate limits what
   a compromised pipeline workflow can access.
 - **HMAC callback secret**: A randomly generated secret stored in the
@@ -269,7 +269,7 @@ dedicated pipeline KV. POST to
    `repo:jdkruzr/rac-pipeline:environment:dev`) against the dev app's
    FIC, receiving an access token scoped to dev resources only.
 3. `az acr login` succeeds against dev ACR (AcrPull/AcrPush).
-4. `az keyvault secret show --vault-name kv-rac-pipeline-dev --name
+4. `az keyvault secret show --vault-name kv-rac-pl-dev --name
    rac-pipeline-cb-${submission_id}` succeeds (KV Secrets User on
    the pipeline KV).
 5. Build → scan → upload artifacts to dev storage `scan-artifacts`
@@ -281,7 +281,7 @@ identical across envs; staging/prod bring-up is a re-run of the runbook
 against staging/prod params. Only dev is provisioned in this plan's scope.
 
 **Callback-secret storage isolation.** The pipeline identity holds Secrets
-User on its env's dedicated `kv-rac-pipeline-${racEnv}` only. The platform
+User on its env's dedicated `kv-rac-pl-${racEnv}` only. The platform
 KV (`kv-rac-${uniqueString}-${racEnv}`) holds runtime secrets like
 `rac-pg-admin-password`, App Gateway TLS, JWS signing keys — none of which
 are accessible to the pipeline identity. A compromised pipeline workflow
@@ -323,7 +323,7 @@ param tags object
 param controlPlaneMiPrincipalId string
 
 // Resources
-//  - Microsoft.KeyVault/vaults: 'kv-rac-pipeline-${uniqueString(...)}-${racEnv}'
+//  - Microsoft.KeyVault/vaults: 'kv-rac-pl-${uniqueString(...)}-${racEnv}'
 //      enableRbacAuthorization: true
 //      softDeleteRetentionInDays: 7
 //      purgeProtection: false (dev; param for staging/prod)
@@ -361,7 +361,7 @@ deliberate divergence.
 - **Per-env parameterization.** `racEnv` (string `'dev'|'staging'|'prod'`)
   is the canonical env selector across the bicep tree. Naming convention
   `<prefix>-rac-<purpose>-${racEnv}` (e.g. `id-rac-controlplane-dev`,
-  `kv-rac-pipeline-${uniqueString(...)}-dev`). Reference module:
+  `kv-rac-pl-${uniqueString(...)}-dev`). Reference module:
   `infra/modules/managed-identity.bicep`.
 - **Role-ID centralization.** All built-in role GUIDs come from
   `infra/modules/role-ids.bicep`, never inline. New file extension adds
@@ -463,7 +463,7 @@ in bicep ensures the subject string can never silently diverge from
 
 **Components:**
 - `docs/runbooks/bootstrap.md` — new section "Pipeline Trust Setup" placed after §3 (Federated Identity Credentials for GHA). Covers: (a) `az ad app create` per env, capture object/principal/client IDs, (b) `az ad app owner add` to grant deploy SP management of each new app reg, (c) GitHub Environment configuration (3 secrets, 5 variables) with the pipeline KV name as `KV_NAME` (NOT platform KV), (d) bicepparam update with captured IDs, (e) Pass 2 deploy with `deployPipelineIdentity=true`, (f) 5-minute RBAC-propagation wait, (g) verification checklist (admin retry + happy-path submission).
-- `apps/control-plane/backend/CLAUDE.md` — add a one-paragraph note on the pipeline-identity contract: "Per-env pipeline app reg holds RBAC on its env's resources only; callback secrets live in `kv-rac-pipeline-${env}`, never in the platform KV; `dispatch_for_submission` is the single entry point."
+- `apps/control-plane/backend/CLAUDE.md` — add a one-paragraph note on the pipeline-identity contract: "Per-env pipeline app reg holds RBAC on its env's resources only; callback secrets live in `kv-rac-pl-${env}`, never in the platform KV; `dispatch_for_submission` is the single entry point."
 
 **Dependencies:** None (can proceed in parallel with Phases 1–3).
 

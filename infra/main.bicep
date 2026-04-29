@@ -167,7 +167,7 @@ param controlPlaneOtlpEndpoint string = ''
 @description('Deploy the per-env pipeline Entra app FIC + role assignments. Set true once the manual app reg + GH Environment exist (see docs/runbooks/bootstrap.md "Pipeline Trust Setup"). Pipeline KV is created independently — see deployPipelineKv. Default false on first deploy.')
 param deployPipelineIdentity bool = false
 
-@description('Whether to create the dedicated pipeline KV (kv-rac-pipeline-...). Independent of deployPipelineIdentity so the KV can exist before the FIC and roles are wired. Recommended: deploy KV in pass 1 (so the CP can mint secrets immediately), wire FIC+RBAC in pass 2.')
+@description('Whether to create the dedicated pipeline KV (kv-rac-pl-...). Independent of deployPipelineIdentity so the KV can exist before the FIC and roles are wired. Recommended: deploy KV in pass 1 (so the CP can mint secrets immediately), wire FIC+RBAC in pass 2.')
 param deployPipelineKv bool = false
 
 @description('Microsoft Graph uniqueName of the manually-created Entra app reg rac-pipeline-\${racEnv}. Empty until app reg is provisioned per runbook. Required when deployPipelineIdentity=true.')

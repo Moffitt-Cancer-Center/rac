@@ -35,7 +35,7 @@ param registryServer string
 @description('Platform Key Vault URI, e.g. https://kv-rac-xxxx-dev.vault.azure.net/')
 param kvUri string
 
-@description('URI of the dedicated pipeline KV (kv-rac-pipeline-...). Empty when the pipeline KV is not yet deployed; the control plane raises a loud 503 on dispatch attempts in that case.')
+@description('URI of the dedicated pipeline KV (kv-rac-pl-...). Empty when the pipeline KV is not yet deployed; the control plane raises a loud 503 on dispatch attempts in that case.')
 param pipelineKvUri string = ''
 
 @description('Postgres server FQDN, e.g. rac-dev-pg-xxx.postgres.database.azure.com')

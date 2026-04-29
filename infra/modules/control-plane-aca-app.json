@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "13039182388532290130"
+      "templateHash": "2280245972180587056"
     }
   },
   "parameters": {
@@ -61,7 +61,7 @@
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "URI of the dedicated pipeline KV (kv-rac-pipeline-...). Empty when the pipeline KV is not yet deployed; the control plane raises a loud 503 on dispatch attempts in that case."
+        "description": "URI of the dedicated pipeline KV (kv-rac-pl-...). Empty when the pipeline KV is not yet deployed; the control plane raises a loud 503 on dispatch attempts in that case."
       }
     },
     "pgHost": {

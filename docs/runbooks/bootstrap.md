@@ -149,8 +149,8 @@ PIPELINE_APP_OBJECT_ID=$(echo "$APP_REG_JSON"   | jq -r .id)
 PIPELINE_APP_UNIQUENAME=$(echo "$APP_REG_JSON" | jq -r .uniqueName)
 
 echo "PIPELINE_APP_ID=$PIPELINE_APP_ID"               # GH secret AZURE_CLIENT_ID
-echo "PIPELINE_APP_OBJECT_ID=$PIPELINE_APP_OBJECT_ID" # bicepparam pipelineAppUniqueNameDev source
-echo "PIPELINE_APP_UNIQUENAME=$PIPELINE_APP_UNIQUENAME"
+echo "PIPELINE_APP_OBJECT_ID=$PIPELINE_APP_OBJECT_ID" # captured for reference; not used directly in bicepparam
+echo "PIPELINE_APP_UNIQUENAME=$PIPELINE_APP_UNIQUENAME" # bicepparam pipelineAppUniqueNameDev source
 
 # Create the matching enterprise-app (service principal). Capture its objectId.
 SP_OBJECT_ID=$(az ad sp create --id "$PIPELINE_APP_ID" --query id -o tsv)
@@ -201,7 +201,7 @@ gh secret set AZURE_SUBSCRIPTION_ID --env "${ENV}" --repo "${GITHUB_OWNER}/${GIT
 ACR_NAME='<from bicep output acrLoginServer, name portion before .azurecr.io>'
 ACR_LOGIN_SERVER='<from bicep output acrLoginServer>'
 BLOB_ACCOUNT_URL='<from bicep output blobEndpoint, e.g. https://racdev....blob.core.windows.net/>'
-KV_NAME='<from bicep output pipelineKvName — kv-rac-pipeline-...; NOT the platform KV>'
+KV_NAME='<from bicep output pipelineKvName — kv-rac-pl-...; NOT the platform KV>'
 SEVERITY_GATE='high'  # or 'medium'/'low' per institutional preference
 
 gh variable set ACR_NAME         --env "${ENV}" --repo "${GITHUB_OWNER}/${GITHUB_REPO}" --body "$ACR_NAME"
@@ -211,7 +211,7 @@ gh variable set KV_NAME          --env "${ENV}" --repo "${GITHUB_OWNER}/${GITHUB
 gh variable set SEVERITY_GATE    --env "${ENV}" --repo "${GITHUB_OWNER}/${GITHUB_REPO}" --body "$SEVERITY_GATE"
 ```
 
-> **Critical: `KV_NAME` is the pipeline KV, not the platform KV.** The pipeline workflow fetches per-submission HMAC secrets from `kv-rac-pipeline-...-${ENV}`. If you set `KV_NAME` to the platform KV (`kv-rac-...`), the workflow will get a 403 because the pipeline app reg has no role on the platform KV (by design — see AC2.2 in the design plan).
+> **Critical: `KV_NAME` is the pipeline KV, not the platform KV.** Both KVs share the `kv-rac-` prefix but can be distinguished: **platform KV is `kv-rac-{hash}-{env}` (no `pl-` infix)**, **pipeline KV is `kv-rac-pl-{hash}-{env}` (with `pl-` infix).** The pipeline workflow fetches per-submission HMAC secrets from `kv-rac-pl-...-${ENV}`. If you set `KV_NAME` to the platform KV, the workflow will get a 403 because the pipeline app reg has no role on the platform KV (by design — see AC2.2 in the design plan).
 
 ### 3.5.4 Update the env's bicepparam with the captured IDs
 
@@ -242,7 +242,7 @@ az deployment sub create \
   --parameters pgAdminPassword="$RAC_PG_ADMIN_PASSWORD" appGwTlsCertKvSecretId="$RAC_APPGW_TLS_CERT_KV_SECRET_ID"
 ```
 
-This deploys the new pipeline KV (`kv-rac-pipeline-...`), the FIC under
+This deploys the new pipeline KV (`kv-rac-pl-...`), the FIC under
 the app reg, and the four resource-scoped role assignments.
 
 ### 3.5.6 Wait for RBAC propagation
@@ -272,7 +272,7 @@ az role assignment list \
   --assignee "$SP_OBJECT_ID" \
   --query "[].{role:roleDefinitionName,scope:scope}" -o table
 # Expected: four rows: AcrPull, AcrPush (both on the env ACR resource);
-# Key Vault Secrets User (on the pipeline KV — kv-rac-pipeline-...);
+# Key Vault Secrets User (on the pipeline KV — kv-rac-pl-...);
 # Storage Blob Data Contributor (on the env's scan-artifacts blob container).
 # All four scopes are per-resource, never resource-group or subscription.
 
@@ -302,7 +302,7 @@ Then watch the `jdkruzr/rac-pipeline` Actions tab for the new workflow
 run. Confirm:
 
 1. `Azure login (OIDC)` step exits 0.
-2. `Fetch callback secret` step succeeds (reads `rac-pipeline-cb-${SUBMISSION_ID}` from `kv-rac-pipeline-...-${ENV}`).
+2. `Fetch callback secret` step succeeds (reads `rac-pipeline-cb-${SUBMISSION_ID}` from `kv-rac-pl-...-${ENV}`).
 3. Build + scan completes.
 4. The control plane receives a callback and the submission FSM advances out of `awaiting_scan` to either `awaiting_research_review` or `severity_gate_failed`.
 
