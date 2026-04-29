@@ -177,13 +177,22 @@ principal to be an Owner of the parent app to manage child credentials.
 
 The "deploying principal" is whoever runs `az deployment sub create` —
 either a dedicated `rac-infra-deploy` SP (preferred for CI/CD; see §1)
-or the operator's own user account (common for local dev).
+or the operator's own user account (common for local dev). Both work;
+the only requirement is that whoever runs the bicep deploy is also
+listed here as an Owner of the app reg.
 
 ```bash
-# If deploying as a dedicated SP:
-#   DEPLOY_PRINCIPAL_ID="<rac-infra-deploy SP object ID — see §1>"
-# If deploying as your own user (local dev):
-DEPLOY_PRINCIPAL_ID=$(az ad signed-in-user show --query id -o tsv)
+# DEPLOY_PRINCIPAL_ID resolves to the principal that will run the bicep
+# deploy. Override the env var if you want to use a specific SP (e.g. in
+# CI/CD); otherwise it defaults to the currently-signed-in user.
+#
+#   For SP-based deploys (CI/CD), pre-set before running this block:
+#     export DEPLOY_PRINCIPAL_ID=$(az ad sp list \
+#       --display-name 'rac-infra-deploy' --query '[0].id' -o tsv)
+#
+#   For user-account deploys (local dev), leave it unset; the line
+#   below will resolve it automatically.
+DEPLOY_PRINCIPAL_ID="${DEPLOY_PRINCIPAL_ID:-$(az ad signed-in-user show --query id -o tsv)}"
 
 az ad app owner add \
   --id "$PIPELINE_APP_OBJECT_ID" \
