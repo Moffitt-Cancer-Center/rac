@@ -220,20 +220,23 @@ gh secret set AZURE_CLIENT_ID       --env "${ENV}" --repo "${GITHUB_OWNER}/${GIT
 gh secret set AZURE_TENANT_ID       --env "${ENV}" --repo "${GITHUB_OWNER}/${GITHUB_REPO}" --body "$TENANT_ID"
 gh secret set AZURE_SUBSCRIPTION_ID --env "${ENV}" --repo "${GITHUB_OWNER}/${GITHUB_REPO}" --body "$SUBSCRIPTION_ID"
 
-# Five variables (env-specific resource references). Pull these from the
-# bicep deploy outputs for the matching env (Phase 5 / 'az deployment sub
-# show ... --query properties.outputs ...').
-ACR_NAME='<from bicep output acrLoginServer, name portion before .azurecr.io>'
-ACR_LOGIN_SERVER='<from bicep output acrLoginServer>'
-BLOB_ACCOUNT_URL='<from bicep output blobEndpoint, e.g. https://racdev....blob.core.windows.net/>'
-KV_NAME='<from bicep output pipelineKvName — kv-rac-pl-...; NOT the platform KV>'
+# Four variables you can set NOW (Pass-1 outputs — derive from the live
+# resource group instead of needing the Pass-2 bicep outputs).
+ACR_LOGIN_SERVER=$(az acr show -g "rg-rac-${ENV}" -n "<acr-name-from-rg>" --query loginServer -o tsv)
+ACR_NAME=$(echo "$ACR_LOGIN_SERVER" | cut -d. -f1)
+BLOB_ACCOUNT_URL=$(az storage account show -g "rg-rac-${ENV}" -n "<storage-account-name-from-rg>" --query primaryEndpoints.blob -o tsv)
 SEVERITY_GATE='high'  # or 'medium'/'low' per institutional preference
 
 gh variable set ACR_NAME         --env "${ENV}" --repo "${GITHUB_OWNER}/${GITHUB_REPO}" --body "$ACR_NAME"
 gh variable set ACR_LOGIN_SERVER --env "${ENV}" --repo "${GITHUB_OWNER}/${GITHUB_REPO}" --body "$ACR_LOGIN_SERVER"
 gh variable set BLOB_ACCOUNT_URL --env "${ENV}" --repo "${GITHUB_OWNER}/${GITHUB_REPO}" --body "$BLOB_ACCOUNT_URL"
-gh variable set KV_NAME          --env "${ENV}" --repo "${GITHUB_OWNER}/${GITHUB_REPO}" --body "$KV_NAME"
 gh variable set SEVERITY_GATE    --env "${ENV}" --repo "${GITHUB_OWNER}/${GITHUB_REPO}" --body "$SEVERITY_GATE"
+
+# KV_NAME is set in §3.5.5 after Pass-2 creates the pipeline KV.
+# DO NOT try to set it now with --body '' — GitHub's variable API
+# rejects empty-string values with HTTP 422 ("object is missing
+# required key: value"). The variable simply doesn't exist until
+# Pass-2 lands.
 ```
 
 > **Critical: `KV_NAME` is the pipeline KV, not the platform KV.** Both KVs share the `kv-rac-` prefix but can be distinguished: **platform KV is `kv-rac-{hash}-{env}` (no `pl-` infix)**, **pipeline KV is `kv-rac-pl-{hash}-{env}` (with `pl-` infix).** The pipeline workflow fetches per-submission HMAC secrets from `kv-rac-pl-...-${ENV}`. If you set `KV_NAME` to the platform KV, the workflow will get a 403 because the pipeline app reg has no role on the platform KV (by design — see AC2.2 in the design plan).
