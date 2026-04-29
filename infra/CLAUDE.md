@@ -1,6 +1,6 @@
 # infra — Tier 2 platform Bicep
 
-**Freshness:** 2026-04-26 (after first end-to-end deploy in eastus2 personal sub)
+**Freshness:** 2026-04-29 (pipeline-trust phases 1–2 merged: per-env pipeline KV + FIC modules wired behind gates; defaults off in all envs)
 
 ## Purpose
 
@@ -33,6 +33,21 @@ Skipping pass 1 → deploying Shim or Control Plane will fail because their MIs 
 - Role IDs (built-in Azure roles) come from `role-ids.bicep` — never hard-code a role GUID elsewhere.
 - ACR `quarantinePolicy` is **disabled** in `acr.bicep`. We don't attach a quarantine-releasing scanner here (researcher-image scanning happens in the rac-pipeline repo); leaving it on causes every pushed tag to come back as `MANIFEST_UNKNOWN`.
 - The application database (`rac` by default) is declared as a child resource of the PG flexible server in `postgres.bicep`. Do not create it out-of-band.
+
+## Pipeline trust modules (per-env)
+
+Two modules support the rac-pipeline GHA workflow's federated trust into this subscription:
+
+- `modules/pipeline-kv.bicep` — dedicated Key Vault `kv-rac-pipeline-${env}` for per-submission HMAC callback secrets. **Public network access is intentionally enabled** (divergence from the platform KV) so the rac-pipeline GHA runner can read secrets without VNet peering. Strict 24-char Azure naming limit applies — the module name pattern stays at `kv-rac-pipeline-${env}` and must not be lengthened. Gated by `deployPipelineKv` (default false).
+- `modules/pipeline-identity.bicep` — Microsoft.Graph federated identity credential (FIC) on the manually-created `rac-pipeline-${env}` Entra app reg, plus four per-resource role assignments at narrowest scope: AcrPull + AcrPush on the platform ACR, Key Vault Secrets User on the *pipeline* KV (never the platform KV), and Storage Blob Data Contributor on the `scan-artifacts` blob container only. Gated by `deployPipelineIdentity` (default false).
+
+**Microsoft.Graph Bicep extension.** First use in the codebase: `extension 'br:mcr.microsoft.com/bicep/extensions/microsoftgraph/v1.0:0.1.8-preview'`. FICs use the composite-name pattern (`'${parentUniqueName}/${childName}'`), not `parent:` symbolic reference — BCP318 nullable-flow analysis trips on conditional `existing` resources. Don't refactor to `parent:` even if a future Bicep version appears to allow it.
+
+**Two safety guards on the pipelineIdentity module call.** (1) Validate-time (AC1.4): when `deployPipelineIdentity=true` but `pipelineAppPrincipalIdDev` is empty, the module `name:` resolves to '' and ARM rejects deployment with the "deployment.name property required" error. (2) Deploy-time consistency: when `deployPipelineIdentity=true` but `deployPipelineKv=false`, the module `name:` resolves to a sentinel string `GUARD-FAIL-deployPipelineKv-must-be-true-...` so the failure surfaces in the deployment name. Recommended sequence: deploy KV in pass 1 (so the CP can mint secrets immediately on first run), wire FIC + RBAC in pass 2 once the manual app reg + GH Environment exist.
+
+**Pipeline KV vs platform KV is a bright line.** Callback secrets *only* land in the pipeline KV. The pipeline app reg's RBAC *only* touches the pipeline KV (and the ACR + scan-artifacts container). Do not grant the pipeline app reg any role on the platform KV, and do not let the control plane mint callback secrets into the platform KV. See root `CLAUDE.md` for the cross-cutting decision.
+
+Module outputs (pipeline KV URI + name, FIC resource ID) are surfaced from `main.bicep` so operators can wire `RAC_PIPELINE_KV_URI` on the control-plane container app and the `KV_NAME` GH Environment variable on rac-pipeline. See `docs/runbooks/bootstrap.md` § 3.5.
 
 ## Scheduled jobs
 

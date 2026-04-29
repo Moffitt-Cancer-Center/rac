@@ -1,6 +1,6 @@
 # RAC — Research Application Commons
 
-**Freshness:** 2026-04-26 (after first end-to-end dev deploy: pass-1 platform + Phase 2 control plane + Phase 6 shim live in `rg-rac-dev` / `eastus2`)
+**Freshness:** 2026-04-29 (after pipeline-trust phases 1–4: per-env pipeline KV + FIC modules wired behind gates; control-plane dispatch helper + 503 loud-fail; Phase 5 dev-deploy still operator-driven)
 
 ## What this is
 
@@ -30,6 +30,8 @@ Each deployment is one Azure subscription hosting one Tier 2 platform (VNet, Pos
 
 **Everything is correlated.** `CorrelationIdMiddleware` extracts or generates an `X-Correlation-Id`; structlog binds it to every log line; all ApiError responses include it. The shim generates its own correlation id per request and forwards it on proxied responses.
 
+**Pipeline trust uses a dedicated KV, not the platform KV.** Each deployment provisions two Key Vaults: the platform KV (`kv-rac-${unique}-${env}`) holds operational secrets (PG admin password, shim DSN, reviewer signing key, AppGw cert) and the pipeline KV (`kv-rac-pipeline-${env}`) holds *only* per-submission HMAC callback secrets minted by the control plane and read by the rac-pipeline GHA workflow via federated identity. The per-env `rac-pipeline-${env}` Entra app reg has KV Secrets User on the pipeline KV and **never** on the platform KV — this RBAC isolation is structural, not policy. Do not consolidate the two KVs and do not grant the pipeline app reg any role on the platform KV. The control plane dispatches via `services/pipeline_dispatch/dispatch_helper.py::dispatch_for_submission` and reads `RAC_PIPELINE_KV_URI` (not `RAC_KV_URI`); missing config raises `DispatchUnavailableError` → HTTP 503 (loud-fail, never silent skip).
+
 ## FCIS discipline
 
 All `# pattern: Functional Core` modules must stay pure: no I/O, no datetime.now, no uuid4, no DB. The shell passes `now=`, `record_id=`, session, pool, etc. Code review is strict on this.
@@ -38,7 +40,7 @@ All `# pattern: Functional Core` modules must stay pure: no I/O, no datetime.now
 
 ## Test footprint
 
-652 backend + 84 frontend + 70 rac-pipeline tests must stay green. Tests use a real Postgres (container fixture) plus a mocked OIDC IdP; there is no in-memory ORM fake.
+670 backend + 84 frontend + 70 rac-pipeline tests must stay green. Tests use a real Postgres (container fixture) plus a mocked OIDC IdP; there is no in-memory ORM fake.
 
 ## See also
 

@@ -1,6 +1,6 @@
 # control-plane/backend — FastAPI Control Plane
 
-**Freshness:** 2026-04-26
+**Freshness:** 2026-04-29 (pipeline-trust phase 3 merged: dispatch helper + 503 loud-fail; backend tests 652 → 670)
 
 ## Purpose
 
@@ -47,7 +47,7 @@ The authoritative API for submission intake, approval workflow, Tier 3 provision
 
 ## Tests
 
-`tests/` runs against a real Postgres via the repo-level container fixture. `conftest.py` wires up the mock OIDC provider for both human and client-credentials flows. Count: 652 passing as of 2026-04-24.
+`tests/` runs against a real Postgres via the repo-level container fixture. `conftest.py` wires up the mock OIDC provider for both human and client-credentials flows. Count: 670 passing as of 2026-04-29 (pipeline-trust phase 3 added 18 dispatch/settings/route tests).
 
 ## Logging gotcha
 
