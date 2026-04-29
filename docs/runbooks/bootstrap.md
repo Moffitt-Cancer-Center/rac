@@ -168,39 +168,45 @@ echo "SP_OBJECT_ID=$SP_OBJECT_ID"  # bicepparam pipelineAppPrincipalIdDev source
 
 > Save the four IDs (`PIPELINE_APP_ID`, `PIPELINE_APP_OBJECT_ID`, `PIPELINE_APP_UNIQUENAME`, `SP_OBJECT_ID`) — you'll paste each into a different place in the next steps.
 
-### 3.5.2 Add the deploying principal as Owner of the new app reg
+### 3.5.2 Add the deploying principals as Owners of the new app reg
 
 The bicep module `pipeline-identity.bicep` creates a child
 `Microsoft.Graph/applications/federatedIdentityCredentials@v1.0`
 resource under this app reg. Microsoft Graph requires the deploying
 principal to be an Owner of the parent app to manage child credentials.
 
-The "deploying principal" is whoever runs `az deployment sub create` —
-either a dedicated `rac-infra-deploy` SP (preferred for CI/CD; see §1)
-or the operator's own user account (common for local dev). Both work;
-the only requirement is that whoever runs the bicep deploy is also
-listed here as an Owner of the app reg.
+A "deploying principal" is whoever runs `az deployment sub create`.
+**Add every principal that may run the deploy** — typically both:
+
+1. The CI/CD service principal (e.g. `RAC Infra Deploy` — the SP whose
+   federated credentials are bound to the rac-repo's GHA workflow). The
+   `infra-deploy.yml` workflow runs as this SP. Required if Pass-2 ever
+   deploys via CI.
+2. Your own user account, for ad-hoc local deploys.
+
+Adding both is idempotent and harmless. Forgetting either causes the FIC
+sub-deployment to fail with `Forbidden / Insufficient privileges to
+complete the operation` from Microsoft Graph at deploy time.
 
 ```bash
-# DEPLOY_PRINCIPAL_ID resolves to the principal that will run the bicep
-# deploy. Override the env var if you want to use a specific SP (e.g. in
-# CI/CD); otherwise it defaults to the currently-signed-in user.
-#
-#   For SP-based deploys (CI/CD), pre-set before running this block:
-#     export DEPLOY_PRINCIPAL_ID=$(az ad sp list \
-#       --display-name 'rac-infra-deploy' --query '[0].id' -o tsv)
-#
-#   For user-account deploys (local dev), leave it unset; the line
-#   below will resolve it automatically.
-DEPLOY_PRINCIPAL_ID="${DEPLOY_PRINCIPAL_ID:-$(az ad signed-in-user show --query id -o tsv)}"
-
+# Add the CI/CD SP (RAC Infra Deploy) — required if any deploy goes via
+# the GH Actions workflow. Find its object ID by appId or display name.
+RAC_INFRA_DEPLOY_SP_OBJECT_ID=$(az ad sp list \
+  --display-name 'RAC Infra Deploy' --query '[0].id' -o tsv)
 az ad app owner add \
   --id "$PIPELINE_APP_OBJECT_ID" \
-  --owner-object-id "$DEPLOY_PRINCIPAL_ID"
+  --owner-object-id "$RAC_INFRA_DEPLOY_SP_OBJECT_ID"
 
-# Verify ownership was added
-az ad app owner list --id "$PIPELINE_APP_OBJECT_ID" --query "[].id" -o tsv
-# Expected: includes $DEPLOY_PRINCIPAL_ID.
+# Add your own user account — for local `az deployment sub create` runs.
+USER_OBJECT_ID=$(az ad signed-in-user show --query id -o tsv)
+az ad app owner add \
+  --id "$PIPELINE_APP_OBJECT_ID" \
+  --owner-object-id "$USER_OBJECT_ID"
+
+# Verify both are listed
+az ad app owner list --id "$PIPELINE_APP_OBJECT_ID" \
+  --query "[].{id:id,displayName:displayName}" -o table
+# Expected: both entries (RAC Infra Deploy + your user) present.
 ```
 
 ### 3.5.3 Create the GitHub Environment + secrets + variables
