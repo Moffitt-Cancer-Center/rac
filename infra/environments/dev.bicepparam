@@ -42,7 +42,7 @@ param kvSoftDeleteRetentionInDays = 7
 // ===== Phase 6: Shim =====
 // Operator must seed `shim-database-dsn` and `shim-cookie-hmac` in the
 // platform KV before deploying with shimImageName set.
-param shimImageName = 'racdevacrczo2xbgcnq.azurecr.io/rac-shim:dev-003'
+param shimImageName = 'racdevacrczo2xbgcnq.azurecr.io/rac-shim:dev-002'
 param shimIssuer = 'https://rac-dev.rac.checkwithscience.com'
 param shimCookieDomain = '.rac-dev.rac.checkwithscience.com'
 param shimInstitutionName = 'RAC Demo (checkwithscience.com)'
@@ -51,7 +51,7 @@ param shimMetricsEnabled = false
 // ===== Phase 2: Control Plane =====
 // Set deployControlPlaneApp=true once the image has been pushed to ACR and
 // the operator has seeded `rac-pg-admin-password` in the platform KV.
-param controlPlaneImageName = 'racdevacrczo2xbgcnq.azurecr.io/rac-control-plane:dev-003'
+param controlPlaneImageName = 'racdevacrczo2xbgcnq.azurecr.io/rac-control-plane:dev-009'
 param deployControlPlaneApp = true
 param controlPlaneIdpClientId = '3d0fb935-d02b-430a-9561-adb20633fbd4'
 param controlPlaneIdpApiClientId = 'ac3d112d-fde7-4f37-812f-b911743698af'
