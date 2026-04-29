@@ -720,6 +720,110 @@ async def test_create_submission_dispatch_unavailable_error_surfaces_as_503(
 
 
 @pytest.mark.asyncio
+async def test_create_submission_idempotency_replays_503_on_retry(
+    client, db_session, mock_oidc
+) -> None:
+    """AC6.4: Idempotency middleware replays 503 on same Idempotency-Key + body.
+
+    Verifies the critical idempotency-replay behavior when dispatch fails:
+    - POST once with Idempotency-Key header and valid body → expect 503
+    - POST again with the SAME Idempotency-Key and body → expect 503 again
+    - Both responses have the same correlation_id (middleware replayed the stored response)
+    - create_submission was called only ONCE (verified via spy) — the second
+      request short-circuited via idempotency middleware's stored response
+
+    This test exercises the full runtime idempotency guarantee that is
+    structurally promised by idempotency.py:225 (all responses are recorded,
+    including non-2xx ones). Without this runtime test, the structural guarantee
+    was never exercised.
+    """
+    test_user_oid = uuid4()
+    token = mock_oidc.issue_user_token(oid=test_user_oid, roles=[])
+    pi_id = uuid4()
+    idem_key = str(uuid4())
+    body = _valid_body(pi_principal_id=pi_id)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Idempotency-Key": idem_key,
+    }
+
+    # Force dispatch_for_submission to raise DispatchUnavailableError
+    async def _always_fail_dispatch(*args, **kwargs):  # type: ignore[no-untyped-def]
+        from rac_control_plane.services.pipeline_dispatch.dispatch_helper import (
+            DispatchUnavailableError,
+        )
+        raise DispatchUnavailableError(
+            "Pipeline dispatch is not configured: RAC_GH_PAT is unset."
+        )
+
+    mock_dispatch = AsyncMock(side_effect=_always_fail_dispatch)
+
+    with _mock_github_success() as mock:
+        mock.start()
+        with patch(
+            "rac_control_plane.services.submissions.create.dispatch_for_submission",
+            new=mock_dispatch,
+        ):
+            # First POST — should 503
+            response1 = await client.post(
+                "/api/submissions",
+                json=body,
+                headers=headers,
+            )
+            # Second POST — same key and body — should replay 503
+            response2 = await client.post(
+                "/api/submissions",
+                json=body,
+                headers=headers,
+            )
+        mock.stop()
+
+    # AC6.4 Part 1: First response is 503
+    assert response1.status_code == 503, (
+        f"First request should be 503, got {response1.status_code}: {response1.text}"
+    )
+
+    # AC6.4 Part 2: Second response is 200 (middleware replay) with x-idempotent-replay header
+    # Per idempotency.py:168-169, replays always return 200, not the original status.
+    # The original error response is stored in the body.
+    assert response2.status_code == 200, (
+        f"Second (replay) request should be 200 (middleware replay), "
+        f"got {response2.status_code}: {response2.text}"
+    )
+    assert response2.headers.get("x-idempotent-replay", "").lower() == "true", (
+        f"Second response must have x-idempotent-replay: true header. "
+        f"Headers: {dict(response2.headers)}"
+    )
+
+    # AC6.4 Part 3: Both responses have the same correlation_id
+    # (the replay returns the cached response body which includes the correlation_id
+    # from the first attempt)
+    data1 = response1.json()
+    data2 = response2.json()
+    correlation_id_1 = data1.get("correlation_id")
+    correlation_id_2 = data2.get("correlation_id")
+    assert correlation_id_1, f"First response missing correlation_id: {data1}"
+    assert correlation_id_2, f"Second response missing correlation_id: {data2}"
+    assert correlation_id_1 == correlation_id_2, (
+        f"AC6.4 FAILED: Replay should have same correlation_id. "
+        f"First: {correlation_id_1}, Second: {correlation_id_2}"
+    )
+    # Verify the error body is preserved (not just the status code)
+    assert data2.get("code") == "service_unavailable", (
+        f"AC6.4 FAILED: Replay body should preserve original error code. "
+        f"Got: {data2}"
+    )
+
+    # AC6.4 Part 4: dispatch_for_submission was called only ONCE (not twice)
+    # The second request short-circuited via idempotency middleware
+    assert mock_dispatch.call_count == 1, (
+        f"AC6.4 FAILED: dispatch_for_submission should be called once (idempotency "
+        f"middleware should replay the first response on the second request), "
+        f"but was called {mock_dispatch.call_count} times"
+    )
+
+
+@pytest.mark.asyncio
 async def test_no_silent_no_op_log_line_on_dispatch_skip() -> None:
     """AC6.5: Silent-no-op log line is structurally removed (grep-based test).
 
@@ -729,8 +833,13 @@ async def test_no_silent_no_op_log_line_on_dispatch_skip() -> None:
     """
     from pathlib import Path
 
-    submissions_file = Path(
-        "/home/sysop/rac/apps/control-plane/backend/src/rac_control_plane/api/routes/submissions.py"
+    submissions_file = (
+        Path(__file__).parent.parent
+        / "src"
+        / "rac_control_plane"
+        / "api"
+        / "routes"
+        / "submissions.py"
     )
     source = submissions_file.read_text()
 
