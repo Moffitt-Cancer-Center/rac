@@ -209,6 +209,54 @@ az ad app owner list --id "$PIPELINE_APP_OBJECT_ID" \
 # Expected: both entries (RAC Infra Deploy + your user) present.
 ```
 
+#### 3.5.2a Grant the CI SP the Microsoft Graph permission to manage owned apps
+
+Owner alone is not sufficient for the GH Actions workflow path. The CI SP
+also needs the Microsoft Graph **`Application.ReadWrite.OwnedBy`**
+application permission to call Graph APIs (creating the FIC under the
+new app reg requires it). Without this, the FIC sub-deployment fails
+with `Forbidden / Insufficient privileges` at deploy time even though
+the SP is an Owner.
+
+`Application.ReadWrite.OwnedBy` is the least-privilege grant: combined
+with the Owner relationship from §3.5.2, it scopes the SP to writing
+*only* apps it owns. (`Application.ReadWrite.All` would also work but
+is overscoped.)
+
+This step requires Cloud Application Administrator or Global Admin to
+admin-consent. Skip if your local user account is the deploy principal
+(local deploys go through the user's own delegated permissions).
+
+```bash
+DEPLOY_APP_ID=$(az ad sp show \
+  --id "$RAC_INFRA_DEPLOY_SP_OBJECT_ID" --query appId -o tsv)
+DEPLOY_SP_OBJECT_ID="$RAC_INFRA_DEPLOY_SP_OBJECT_ID"
+GRAPH_APP_ID=00000003-0000-0000-c000-000000000000  # Microsoft Graph well-known appId
+GRAPH_SP_OBJECT_ID=$(az ad sp show --id "$GRAPH_APP_ID" --query id -o tsv)
+APP_ROLE_ID=$(az ad sp show --id "$GRAPH_APP_ID" \
+  --query "appRoles[?value=='Application.ReadWrite.OwnedBy'].id | [0]" -o tsv)
+
+# Direct API grant (bypasses `az ad app permission admin-consent` which
+# can silently no-op for Application-typed permissions on some tenants).
+az rest --method POST \
+  --uri "https://graph.microsoft.com/v1.0/servicePrincipals/${DEPLOY_SP_OBJECT_ID}/appRoleAssignments" \
+  --headers "Content-Type=application/json" \
+  --body "{\"principalId\":\"${DEPLOY_SP_OBJECT_ID}\",\"resourceId\":\"${GRAPH_SP_OBJECT_ID}\",\"appRoleId\":\"${APP_ROLE_ID}\"}"
+
+# Verify
+az rest --method GET \
+  --uri "https://graph.microsoft.com/v1.0/servicePrincipals/${DEPLOY_SP_OBJECT_ID}/appRoleAssignments" \
+  --query "value[].{appRoleId:appRoleId,resourceDisplayName:resourceDisplayName}" -o json
+# Expected: includes one entry with resourceDisplayName="Microsoft Graph"
+# and appRoleId matching $APP_ROLE_ID.
+```
+
+> **Why not via the bicep `pipeline-identity.bicep` module?** Microsoft
+> Graph app-role assignments require the deploying principal to already
+> have admin-consent permission, which is the exact privilege we're
+> trying to grant — chicken/egg. So this step stays manual, one-time,
+> per CI SP.
+
 ### 3.5.3 Create the GitHub Environment + secrets + variables
 
 ```bash
