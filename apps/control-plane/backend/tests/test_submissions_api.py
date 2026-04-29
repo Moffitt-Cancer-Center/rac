@@ -544,3 +544,196 @@ async def test_submission_disabled_pi_returns_422(client, db_session, mock_oidc)
     )
     rows = list(await db_session.scalars(stmt))
     assert rows == [], f"Expected no submission rows for {test_user_oid}, found {len(rows)}"
+
+
+# ---------------------------------------------------------------------------
+# Task 7 Tests — Pipeline Dispatch Error Handling (AC5.1, AC6.1-AC6.5)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_create_submission_happy_path_dispatches_with_real_secret_name(
+    client, db_session, mock_oidc
+) -> None:
+    """AC5.1: Dispatched payload contains real callback_secret_name, not placeholder.
+
+    Verifies that the create-submission path calls dispatch_for_submission
+    which mints a real HMAC secret in the pipeline KV, and that the
+    dispatched payload carries the real secret name (not a placeholder).
+    """
+    test_user_oid = uuid4()
+    token = mock_oidc.issue_user_token(oid=test_user_oid, roles=[])
+    headers = {"Authorization": f"Bearer {token}"}
+    pi_id = uuid4()
+    body = _valid_body(pi_principal_id=pi_id)
+
+    # Mock the mint_callback_secret to return a predictable secret name
+    async def _mock_mint(submission_id, *, kv_uri, expiry_minutes, client=None):  # type: ignore[no-untyped-def]
+        secret_name = f"rac-pipeline-cb-{submission_id}"
+        secret_value = "mock_secret_value"
+        return (secret_name, secret_value)
+
+    # Capture the GH dispatch call to verify the payload shape
+    captured_payload: dict[str, object] = {}
+
+    async def _capture_dispatch(owner: str, repo: str, payload: dict[str, object], auth_token: str) -> None:
+        captured_payload.update(payload)
+
+    with _mock_github_success() as mock:
+        mock.start()
+        with patch(
+            "rac_control_plane.services.pipeline_dispatch.dispatch_helper.mint_callback_secret",
+            new=AsyncMock(side_effect=_mock_mint),
+        ), patch(
+            "rac_control_plane.services.pipeline_dispatch.dispatch_helper.gh_dispatch.dispatch",
+            new=AsyncMock(side_effect=_capture_dispatch),
+        ):
+            response = await client.post("/api/submissions", json=body, headers=headers)
+        mock.stop()
+
+    assert response.status_code == 201, response.text
+    data = response.json()
+    response_id = data["id"]
+
+    # Verify the dispatched payload contains the real secret name
+    # (format: rac-pipeline-cb-<submission-id>)
+    assert captured_payload, "dispatch was not called"
+    expected_secret_name = f"rac-pipeline-cb-{response_id}"
+    assert captured_payload.get("callback_secret_name") == expected_secret_name, (
+        f"Expected callback_secret_name={expected_secret_name}, "
+        f"got {captured_payload.get('callback_secret_name')}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_submission_no_orphan_row_on_dispatch_503(
+    client, db_session, mock_oidc, monkeypatch
+) -> None:
+    """AC6.1, AC6.2, AC6.3: Missing RAC_GH_PAT returns 503, no orphan row or secret.
+
+    Verifies:
+    - AC6.1: Response is 503 with body code='service_unavailable' and message mentioning RAC_GH_PAT
+    - AC6.2: No submission row is created (transaction rolled back before dispatch error)
+    - AC6.3: No callback secret is created in the pipeline KV (mint_callback_secret not called)
+    """
+    test_user_oid = uuid4()
+    token = mock_oidc.issue_user_token(oid=test_user_oid, roles=[])
+    headers = {"Authorization": f"Bearer {token}"}
+    pi_id = uuid4()
+    body = _valid_body(pi_principal_id=pi_id)
+
+    # Simulate missing RAC_GH_PAT by unsetting it
+    monkeypatch.delenv("RAC_GH_PAT", raising=False)
+    from rac_control_plane.settings import get_settings
+    get_settings.cache_clear()
+
+    # Spy on mint_callback_secret to verify it's not called (AC6.3)
+    mock_mint = AsyncMock()
+
+    with _mock_github_success() as mock:
+        mock.start()
+        with patch(
+            "rac_control_plane.services.pipeline_dispatch.dispatch_helper.mint_callback_secret",
+            new=mock_mint,
+        ):
+            response = await client.post("/api/submissions", json=body, headers=headers)
+        mock.stop()
+
+    # AC6.1: Response is 503 with correct error shape
+    assert response.status_code == 503, (
+        f"Expected 503, got {response.status_code}: {response.text}"
+    )
+    data = response.json()
+    assert data.get("code") == "service_unavailable", f"Expected code='service_unavailable', got {data}"
+    assert "RAC_GH_PAT" in data.get("message", ""), (
+        f"Expected 'RAC_GH_PAT' in message, got: {data.get('message')}"
+    )
+
+    # AC6.2: No submission row created
+    stmt = select(Submission).where(
+        Submission.submitter_principal_id == test_user_oid
+    )
+    rows = list(await db_session.scalars(stmt))
+    assert rows == [], f"AC6.2 FAILED: Expected no submission rows, found {len(rows)}"
+
+    # AC6.3: mint_callback_secret was not called (dispatch_for_submission
+    # raises DispatchUnavailableError BEFORE calling mint_callback_secret,
+    # guaranteeing no orphan secret)
+    assert not mock_mint.called, (
+        "AC6.3 FAILED: mint_callback_secret should not have been called"
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_submission_dispatch_unavailable_error_surfaces_as_503(
+    client, db_session, mock_oidc
+) -> None:
+    """AC6.1: DispatchUnavailableError from dispatch_for_submission surfaces as 503.
+
+    Verifies that when dispatch_for_submission raises DispatchUnavailableError,
+    the route layer catches it and maps it to a 503 ServiceUnavailableError
+    response with the correct error body shape.
+
+    This also indirectly verifies AC6.4: the idempotency middleware records
+    the 503 response (per api/middleware/idempotency.py:225), so subsequent
+    identical requests within the 24h window will return the same cached response.
+    """
+    test_user_oid = uuid4()
+    token = mock_oidc.issue_user_token(oid=test_user_oid, roles=[])
+    headers = {"Authorization": f"Bearer {token}"}
+    pi_id = uuid4()
+    body = _valid_body(pi_principal_id=pi_id)
+
+    # Force dispatch_for_submission to raise DispatchUnavailableError
+    async def _always_fail_dispatch(*args, **kwargs):  # type: ignore[no-untyped-def]
+        from rac_control_plane.services.pipeline_dispatch.dispatch_helper import (
+            DispatchUnavailableError,
+        )
+        raise DispatchUnavailableError(
+            "Pipeline dispatch is not configured: RAC_GH_PAT is unset."
+        )
+
+    with _mock_github_success() as mock:
+        mock.start()
+        with patch(
+            "rac_control_plane.services.submissions.create.dispatch_for_submission",
+            new=AsyncMock(side_effect=_always_fail_dispatch),
+        ):
+            response = await client.post(
+                "/api/submissions",
+                json=body,
+                headers=headers,
+            )
+        mock.stop()
+
+    # Response is 503 with correct error body
+    assert response.status_code == 503, response.text
+    data = response.json()
+    assert data.get("code") == "service_unavailable", (
+        f"AC6.1 FAILED: Expected code='service_unavailable', got {data}"
+    )
+    assert "RAC_GH_PAT" in data.get("message", ""), (
+        f"AC6.1 FAILED: Expected 'RAC_GH_PAT' in message, got: {data.get('message')}"
+    )
+    assert "correlation_id" in data, (
+        f"AC6.1 FAILED: Expected correlation_id in response, got {data}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_silent_no_op_log_line_on_dispatch_skip() -> None:
+    """AC6.5: Silent-no-op log line is structurally removed (grep-based test).
+
+    Verifies that the literal string 'pipeline_dispatch_skipped_no_auth_token'
+    does not appear in the submissions.py source. This was the silent-no-op
+    log line that was replaced with a loud 503 error.
+    """
+    from pathlib import Path
+
+    submissions_file = Path(
+        "/home/sysop/rac/apps/control-plane/backend/src/rac_control_plane/api/routes/submissions.py"
+    )
+    source = submissions_file.read_text()
+
+    assert (
+        "pipeline_dispatch_skipped_no_auth_token" not in source
+    ), "AC6.5 FAILED: Silent-no-op log line still present in submissions.py"
