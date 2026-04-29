@@ -297,8 +297,9 @@ gh variable set SEVERITY_GATE    --env "${ENV}" --repo "${GITHUB_OWNER}/${GITHUB
 
 ### 3.5.4 Update the env's bicepparam with the captured IDs
 
-Edit `infra/environments/${ENV}.bicepparam`. Set the four pipeline-trust
-params with the values captured in §3.5.1:
+Edit `infra/environments/${ENV}.bicepparam`. Set the pipeline-trust
+params with the values captured in §3.5.1, and set the GitHub owner so
+the FIC subject and the control-plane env both render correctly:
 
 ```bicep
 param deployPipelineKv = true
@@ -306,6 +307,12 @@ param deployPipelineIdentity = true
 param pipelineAppUniqueNameDev = '<PIPELINE_APP_UNIQUENAME from §3.5.1>'
 param pipelineAppPrincipalIdDev = '<SP_OBJECT_ID from §3.5.1>'
 param pipelineAppClientIdDev = '<PIPELINE_APP_ID from §3.5.1>'
+
+// Required for the FIC subject and the CP's RAC_GH_PIPELINE_OWNER env.
+// Defaults to '' in main.bicep; if you forget to set it, the FIC subject
+// renders as 'repo:/${GITHUB_REPO}:environment:${ENV}' (empty owner) and
+// no GHA OIDC token will ever match it.
+param controlPlaneGithubPipelineOwner = '<GITHUB_OWNER from §3.5.1, e.g. jdkruzr>'
 ```
 
 > Note: `pipelineAppUniqueNameDev` is the Microsoft Graph **uniqueName** of
@@ -313,6 +320,26 @@ param pipelineAppClientIdDev = '<PIPELINE_APP_ID from §3.5.1>'
 > resource uses uniqueName as the lookup key for `existing` references.
 > `pipelineAppPrincipalIdDev` is the **enterprise-app SP's objectId**, not
 > the app reg's objectId — Azure RBAC role assignments target the SP.
+
+> **Image-tag drift check (general infra hygiene, not pipeline-trust-specific).**
+> Before running §3.5.5, confirm `param shimImageName` and
+> `param controlPlaneImageName` match what the live ACA apps are actually
+> running:
+>
+> ```bash
+> az containerapp show -g "rg-rac-${ENV}" -n "rac-control-plane-${ENV}" \
+>   --query "properties.template.containers[0].image" -o tsv
+> az containerapp show -g "rg-rac-${ENV}" -n "rac-shim-${ENV}" \
+>   --query "properties.template.containers[0].image" -o tsv
+> ```
+>
+> If either differs from bicepparam, an out-of-band ACA update advanced
+> the live revision past what bicepparam tracks. Update bicepparam to
+> match. If you don't, bicep tries to roll back to a tag that may no
+> longer exist in the ACR, the deploy fails with `MANIFEST_UNKNOWN`,
+> and ARM aborts unrelated sibling sub-deployments (including
+> `deploy-control-plane-aca-app`, which means the new
+> `RAC_PIPELINE_KV_URI` env var won't reach the running CP).
 
 ### 3.5.5 Pass-2 deploy with the gates flipped on
 
