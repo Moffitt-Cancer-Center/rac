@@ -291,7 +291,10 @@ secret too). Then:
 ```bash
 SUBMISSION_ID='<uuid of the stuck submission>'
 ADMIN_TOKEN='<admin OIDC bearer; see §6 of this runbook for token-acquire>'
-CONTROL_PLANE_HOST='<your env, e.g. https://rac-dev.rac.checkwithscience.com>'
+CONTROL_PLANE_HOST='<your env, e.g. https://cp.rac-dev.rac.checkwithscience.com>'
+# Note: control plane lives on the `cp.` subdomain, NOT the apex. The
+# apex (and `*.`) wildcard is bound to the shim listener for researcher
+# apps; AppGw returns 404 if you hit the apex with control-plane paths.
 
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
   "${CONTROL_PLANE_HOST}/api/admin/submissions/${SUBMISSION_ID}/dispatch/retry"
